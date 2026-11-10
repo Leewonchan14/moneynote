@@ -1841,11 +1841,24 @@ test.describe("3D 영수증과 여행 깃발", () => {
       memo: "영수증에 안 나올 입금",
     });
 
+    // 출력 연출은 2초쯤이면 끝나고 그때 건너뛰기 버튼이 사라진다. GPU 없는 테스트 환경에서는
+    // 3D를 CPU로 그리느라 클릭 준비가 그보다 오래 걸릴 수 있어, 시계를 멈추고
+    // 캔버스가 뜰 때까지만 조금씩 흘려 연출이 거의 시작되지 않은 상태에서 누른다.
+    await page.clock.install();
     await openLedger(page, token);
-    await page.getByRole("button", { name: "영수증 뽑기" }).click();
+    const printButton = page.getByRole("button", { name: "영수증 뽑기" });
+    // 리캡 데이터가 그려진 뒤에 멈춘다(데이터 갱신도 타이머를 쓴다).
+    await expect(printButton).toBeVisible();
+    await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 1_000);
+    await printButton.click();
     const dialog = page.getByRole("dialog", { name: "지난주 영수증" });
-    await expect(dialog.getByTestId("receipt-printer").locator("canvas")).toBeVisible();
+    const canvas = dialog.getByTestId("receipt-printer").locator("canvas");
+    await expect(async () => {
+      await page.clock.runFor(50);
+      await expect(canvas).toBeVisible({ timeout: 100 });
+    }).toPass();
     await dialog.getByRole("button", { name: "건너뛰기" }).click();
+    await page.clock.resume();
 
     await expect(
       dialog.getByRole("img", { name: "지난주 영수증, 합계 15,500원" })
