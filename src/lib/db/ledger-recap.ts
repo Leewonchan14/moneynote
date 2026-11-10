@@ -6,32 +6,37 @@ import {
 import { getLedgerStats } from "@/lib/db/ledger-stats";
 import { kst } from "@/lib/kst";
 import { getBudgetPace } from "@/lib/ledger/pace";
-import { lastCompletedWeek, type LedgerWeeklyRecap } from "@/lib/ledger/recap";
+import { recapRange, type LedgerRecap, type LedgerRecapPeriod } from "@/lib/ledger/recap";
 
 const TOP_EXPENSES = 3;
 
 const entryLabel = (entry: LedgerEntryView) =>
   entry.memo || entry.subcategoryName || entry.categoryName || "내역";
 
-export const getLedgerWeeklyRecap = async (): Promise<LedgerWeeklyRecap> => {
+/** 고른 달이나 주의 리캡. key는 달이면 YYYY-MM, 주면 그 주 월요일이다. */
+export const getLedgerRecap = async (
+  period: LedgerRecapPeriod,
+  key: string
+): Promise<LedgerRecap> => {
   const today = kst().format("YYYY-MM-DD");
-  const month = today.slice(0, 7);
-  const week = lastCompletedWeek(today);
+  const range = recapRange(period, key, today);
 
   const [current, previous, ledger] = await Promise.all([
-    getLedgerStats(week.from, week.to),
-    getLedgerStats(week.previousFrom, week.previousTo),
-    getLedgerMonth(month),
+    getLedgerStats(range.from, range.to),
+    getLedgerStats(range.previousFrom, range.previousTo),
+    getLedgerMonth(range.month),
   ]);
 
   const expenses = current.entries.filter((entry) => entry.kind === "expense");
   const total = ledger.budget.totalBudget;
   const spent = ledger.summary.expense;
-  const pace = getBudgetPace({ month, today, budget: total, spent });
+  const pace = getBudgetPace({ month: range.month, today, budget: total, spent });
 
   return {
-    from: week.from,
-    to: week.to,
+    period,
+    from: range.from,
+    to: range.to,
+    inProgress: range.inProgress,
     expense: current.summary.expense,
     expenseCount: current.summary.expenseCount,
     previousExpense: previous.summary.expense,
@@ -53,6 +58,6 @@ export const getLedgerWeeklyRecap = async (): Promise<LedgerWeeklyRecap> => {
         amount: entry.amount,
         categoryName: entry.categoryName,
       })),
-    budget: total != null && pace ? { total, spent, pace } : null,
+    budget: total != null && pace ? { month: range.month, total, spent, pace } : null,
   };
 };
