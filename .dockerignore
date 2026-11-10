@@ -1,0 +1,15 @@
+.git
+.next
+node_modules
+data
+.env*
+!.env.example
+*.tsbuildinfo
+Dockerfile
+docker-compose.yml
+README.md
+backups
+e2e
+playwright.config.ts
+test-results
+playwright-report

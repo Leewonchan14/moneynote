@@ -1,0 +1,11 @@
+.agents
+.next
+.vercel
+node_modules
+coverage
+drizzle/meta
+public
+.env*
+package-lock.json
+next-env.d.ts
+*.tsbuildinfo

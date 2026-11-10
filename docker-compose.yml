@@ -1,0 +1,32 @@
+name: moneynote
+
+services:
+  app:
+    build: .
+    image: moneynote:latest
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 20s
+    env_file:
+      - .env.local
+    # 앱이 지정한 주소에 직접 바인딩한다. 부팅 때 Tailscale 주소가 아직 없으면
+    # 앱이 실패 종료하고, restart 정책이 주소가 생길 때까지 다시 시도한다.
+    network_mode: host
+    environment:
+      HOSTNAME: ${MONEYNOTE_BIND:-127.0.0.1}
+      PORT: ${MONEYNOTE_PORT:-3100}
+    volumes:
+      - data:/data
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://'+process.env.HOSTNAME+':'+process.env.PORT+'/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  data:
