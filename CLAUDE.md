@@ -15,6 +15,10 @@
 2. 구현하고 확인한다: `npx tsc --noEmit`, `npm run lint`, `npx prettier --check src e2e`, `npm run test:e2e`.
 3. 데모 GIF를 만든다(아래).
 4. 브랜치를 push하고 `gh pr create`로 main에 PR을 연다. 본문에는 바뀐 점, 확인한 것(테스트 결과), 데모 GIF를 넣는다.
+   - **라벨과 담당자를 반드시 단다.** 담당자는 `Leewonchan14`. 라벨은 기능 추가·개선이면 `enhancement`, 버그 수정이면 `bug`, 문서도 고쳤으면 `documentation`을 함께 단다.
+   - 예: `gh pr create --label enhancement --assignee Leewonchan14 --body-file body.md --attach demo-output/<이름>.gif`
+   - 이미 만든 PR이면 `gh pr edit <번호> --add-label enhancement --add-assignee Leewonchan14`로 붙인다.
+   - 만든 뒤 `gh pr view <번호> --json labels,assignees`로 실제로 붙었는지 확인한다.
 5. 머지와 운영 반영(`docker compose up -d --build`)은 사용자가 요청할 때 한다.
 
 ## PR 데모 GIF
@@ -22,5 +26,8 @@
 - **샘플 데이터로만 찍는다.** `npm run demo`는 e2e와 같이 빌드한 뒤 임시 빈 DB로 서버를 띄운다. 운영 DB나 그 복사본으로 찍지 않는다.
 - 녹화 스펙은 `e2e/demo/<기능>.demo.ts`에 둔다. API로 샘플 내역을 넣고, `startRecording` → 화면 조작(`pause`, `scrollToTarget`) → `recording.stop("<이름>")` 순서로 쓴다. `e2e/demo/insights.demo.ts`가 예시다. 모바일(Pixel 7) 화면으로 찍고, 누른 곳은 `showTaps`로 표시된다.
 - 결과는 `demo-output/<이름>.gif`(git에 안 들어감). `DEMO_KEEP_FRAMES=1 npm run demo`로 프레임 jpg를 남겨 내용을 눈으로 확인한 뒤 올린다. 이미 빌드했으면 `E2E_SKIP_BUILD=1`로 빌드를 건너뛴다.
-- 올리기: `scripts/pr-assets.sh <브랜치 이름> demo-output/<이름>.gif` — `pr-assets/<브랜치 이름>` 고아 브랜치에 올리고 커밋 SHA로 고정한 `<img>` 태그를 출력한다. 그대로 PR 본문에 붙인다.
+- 올리기: **`gh --attach`로 GitHub 첨부에 올린다.** 별도 브랜치에 커밋하지 않는다. 본문에 `![데모](demo-output/<이름>.gif)`처럼 로컬 경로로 적고 같은 파일을 `--attach`하면 `github.com/user-attachments/assets/…` 주소로 바뀐다. 본문에서 가리키지 않은 첨부는 맨 끝에 붙는다.
+  - 새 PR: `gh pr create --body-file body.md --attach demo-output/<이름>.gif ...`
+  - 이미 만든 PR: `gh pr edit <번호> --body-file body.md --attach demo-output/<이름>.gif`
+  - gh 2.99.0 이상이 필요하다. 셸이 예전 버전을 잡으면 `$(mise which gh)`를 쓴다. 이미지·GIF는 10MB까지 올라간다.
 - 녹화 스펙은 다음 기능의 예시가 되도록 커밋해 둔다. 일반 e2e(`npm run test:e2e`)에는 포함되지 않는다.
