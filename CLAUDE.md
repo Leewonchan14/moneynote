@@ -9,6 +9,8 @@
 
 ## 새 기능은 PR로 올린다
 
+앱 기능을 추가하거나 바꿀 때만 PR을 만든다. 작업 규칙·문서·개발 도구처럼 앱 기능이 아닌 변경은 main에 바로 커밋한다.
+
 1. main에서 `feat/<기능>` 브랜치를 만든다(버그 수정은 `fix/<내용>`). main에 직접 커밋하지 않는다.
 2. 구현하고 확인한다: `npx tsc --noEmit`, `npm run lint`, `npx prettier --check src e2e`, `npm run test:e2e`.
 3. 데모 GIF를 만든다(아래).
