@@ -32,6 +32,7 @@ import { EntryDialog } from "@/components/ledger/entry-dialog";
 import type { LedgerEntryView } from "@/components/ledger/entry-list";
 import { LedgerEntryList } from "@/components/ledger/entry-list";
 import { PasteDialog } from "@/components/ledger/paste-dialog";
+import { MonthPicker, WeekPicker } from "@/components/ledger/period-picker";
 import { RecapCard } from "@/components/ledger/recap-card";
 import { SavingsView } from "@/components/ledger/savings-view";
 import {
@@ -615,9 +616,7 @@ export const LedgerPage = () => {
                   >
                     <ChevronLeft />
                   </Button>
-                  <span className="min-w-24 text-center text-sm font-medium text-foreground tabular-nums">
-                    {periodLabel}
-                  </span>
+                  <WeekPicker weekStart={weekStart} onChange={goWeek} />
                   <Button
                     variant="ghost"
                     size="icon"
@@ -642,9 +641,7 @@ export const LedgerPage = () => {
                   >
                     <ChevronLeft />
                   </Button>
-                  <span className="min-w-24 text-center text-sm font-medium text-foreground tabular-nums">
-                    {monthLabel}
-                  </span>
+                  <MonthPicker month={month} onChange={setMonth} />
                   <Button
                     variant="ghost"
                     size="icon"
