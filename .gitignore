@@ -59,3 +59,6 @@ next-env.d.ts
 *.csv
 pglite/
 *.local
+
+# PR 데모 GIF 녹화 결과
+/demo-output/

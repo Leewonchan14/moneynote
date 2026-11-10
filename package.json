@@ -9,7 +9,8 @@
     "lint": "eslint",
     "format": "prettier --write src",
     "db:generate": "drizzle-kit generate",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "demo": "playwright test -c playwright.demo.config.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
@@ -48,6 +49,8 @@
     "drizzle-kit": "^0.31.10",
     "eslint": "^9",
     "eslint-config-next": "16.2.10",
+    "gifenc": "^1.0.3",
+    "jpeg-js": "^0.4.4",
     "prettier": "^3.9.5",
     "prettier-plugin-organize-imports": "^4.3.0",
     "prettier-plugin-tailwindcss": "^0.8.0",

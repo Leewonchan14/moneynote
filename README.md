@@ -46,3 +46,5 @@ npm run dev      # http://127.0.0.1:3100, 데이터는 ./data/pglite
 E2E 테스트는 `npm run test:e2e`로 실행합니다. 앱을 빌드한 뒤 테스트마다 빈 임시 DB로 서버를 따로 띄우므로 실제 데이터와 운영 컨테이너에는 접속하지 않습니다. 처음 한 번은 `npx playwright install chromium`이 필요합니다.
 
 DB 구조를 바꿀 때는 `src/lib/db/schema.ts`를 고치고 `npm run db:generate`를 실행하세요. 마이그레이션은 서버가 시작할 때 자동으로 적용됩니다.
+
+새 기능은 PR로 올리고 PR에 데모 GIF를 붙입니다. 절차는 [CLAUDE.md](CLAUDE.md)를 보세요.
