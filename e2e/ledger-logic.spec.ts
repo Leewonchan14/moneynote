@@ -17,7 +17,7 @@ import {
   suggestLedgerCategoryName,
 } from "../src/lib/ledger/notification";
 import { getBudgetPace, projectMonthExpense } from "../src/lib/ledger/pace";
-import { lastCompletedWeek, type LedgerWeeklyRecap } from "../src/lib/ledger/recap";
+import { recapRange, type LedgerRecap } from "../src/lib/ledger/recap";
 import {
   buildReceiptLines,
   RECEIPT_MAX_ITEMS,
@@ -254,15 +254,54 @@ test("항공과 렌터카는 각각의 분류로 추측한다", () => {
   expect(suggestLedgerCategoryName("토스페이_렌터카_나이스", "expense")).toBe("렌트");
 });
 
-test("주간 리캡 기간: 월요일과 일요일 모두 끝난 월~일 주를 고른다", () => {
-  expect(lastCompletedWeek("2026-11-09")).toEqual({
-    from: "2026-11-02",
-    to: "2026-11-08",
-    previousFrom: "2026-10-26",
-    previousTo: "2026-11-01",
+test.describe("리캡 기간", () => {
+  test("끝난 주는 월~일 전체를 전주 전체와 비교한다", () => {
+    expect(recapRange("week", "2026-11-02", "2026-11-10")).toEqual({
+      from: "2026-11-02",
+      to: "2026-11-08",
+      inProgress: false,
+      previousFrom: "2026-10-26",
+      previousTo: "2026-11-01",
+      month: "2026-11",
+    });
   });
-  expect(lastCompletedWeek("2026-11-08").from).toBe("2026-10-26");
-  expect(lastCompletedWeek("2026-11-08").to).toBe("2026-11-01");
+
+  test("진행 중인 주는 오늘까지를 전주 같은 요일까지와 비교한다", () => {
+    expect(recapRange("week", "2026-11-09", "2026-11-11")).toMatchObject({
+      from: "2026-11-09",
+      to: "2026-11-11",
+      inProgress: true,
+      previousFrom: "2026-11-02",
+      previousTo: "2026-11-04",
+    });
+  });
+
+  test("두 달에 걸친 주의 예산은 목요일이 든 달 것을 본다", () => {
+    expect(recapRange("week", "2026-09-28", "2026-11-10").month).toBe("2026-10");
+  });
+
+  test("진행 중인 달은 오늘까지를 지난달 같은 날까지와 비교한다", () => {
+    expect(recapRange("month", "2026-11", "2026-11-10")).toEqual({
+      from: "2026-11-01",
+      to: "2026-11-10",
+      inProgress: true,
+      previousFrom: "2026-10-01",
+      previousTo: "2026-10-10",
+      month: "2026-11",
+    });
+    // 지난달이 더 짧으면 그 달 마지막 날까지만 본다.
+    expect(recapRange("month", "2026-03", "2026-03-31").previousTo).toBe("2026-02-28");
+  });
+
+  test("끝난 달은 말일까지를 지난달 전체와 비교한다", () => {
+    expect(recapRange("month", "2026-10", "2026-11-10")).toMatchObject({
+      from: "2026-10-01",
+      to: "2026-10-31",
+      inProgress: false,
+      previousFrom: "2026-09-01",
+      previousTo: "2026-09-30",
+    });
+  });
 });
 
 test.describe("3D 보기 색", () => {
@@ -324,10 +363,12 @@ test.describe("3D 보기 색", () => {
   });
 });
 
-test.describe("주간 영수증", () => {
-  const recap = (patch: Partial<LedgerWeeklyRecap> = {}): LedgerWeeklyRecap => ({
+test.describe("리캡 영수증", () => {
+  const recap = (patch: Partial<LedgerRecap> = {}): LedgerRecap => ({
+    period: "week",
     from: "2026-11-02",
     to: "2026-11-08",
+    inProgress: false,
     expense: 0,
     expenseCount: 0,
     previousExpense: 0,
@@ -420,6 +461,27 @@ test.describe("주간 영수증", () => {
         (line) => line.kind === "barcode"
       )
     );
+  });
+
+  test("월간 영수증은 전월과 비교하고 달 인사로 끝난다", () => {
+    const lines = text(
+      buildReceiptLines(
+        recap({
+          period: "month",
+          from: "2026-10-01",
+          to: "2026-10-31",
+          expense: 5_000,
+          expenseCount: 1,
+          previousExpense: 8_000,
+          items: [item(1, "2026-10-15", 5_000, "식비")],
+        }),
+        { printedAt: "" }
+      )
+    );
+    expect(lines).toContain("머니노트 월간 영수증");
+    expect(lines).toContain("전월 대비 -3,000");
+    expect(lines).toContain("무지출 30일");
+    expect(lines).toContain("이번 달도 수고했어요 :)");
   });
 });
 

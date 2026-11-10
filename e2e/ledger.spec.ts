@@ -1,6 +1,5 @@
 import { kst } from "../src/lib/kst";
-import { lastCompletedWeek } from "../src/lib/ledger/recap";
-import { shiftWeek, weekEndOf, weekStartOf } from "../src/lib/ledger/week";
+import { shiftWeek, weekEndOf, weekMonth, weekStartOf } from "../src/lib/ledger/week";
 import {
   addEntry,
   authHeaders,
@@ -588,17 +587,37 @@ test.describe("내역 탭", () => {
   });
 });
 
-test.describe("지난주 리캡", () => {
-  test("합계·전주 대비·큰 지출·예산을 보여 주고 이체와 입금은 빼고 센다", async ({
+/** 지난 월~일 주와 그 전 주. */
+const lastWeek = () => {
+  const from = shiftWeek(weekStartOf(today()), -1);
+  return { from, to: weekEndOf(from), previousFrom: shiftWeek(from, -1) };
+};
+
+/** 내역을 주 단위로 바꾸고 지난주로 간다. */
+const showLastWeek = async (page: Page) => {
+  await page
+    .getByRole("group", { name: "기간 단위" })
+    .getByRole("button", { name: "주" })
+    .click();
+  await page.getByRole("button", { name: "이전 주" }).click();
+};
+
+test.describe("기간 리캡", () => {
+  test("주별 리캡: 합계·전주 대비·큰 지출·예산을 보여 주고 이체와 입금은 빼고 센다", async ({
     page,
     request,
     token,
   }) => {
-    const week = lastCompletedWeek(today());
+    const week = lastWeek();
     const savingsId = await createSavings(request, token, "적금");
     await request.put("/api/ledger/budget", {
       headers: authHeaders(token),
-      data: { month: thisMonth(), totalBudget: 100_000_000, note: "", categories: [] },
+      data: {
+        month: weekMonth(week.from),
+        totalBudget: 100_000_000,
+        note: "",
+        categories: [],
+      },
     });
     for (const [amount, memo] of [
       [30_000, "제일 큰 지출"],
@@ -628,7 +647,9 @@ test.describe("지난주 리캡", () => {
     });
 
     await openLedger(page, token);
-    const card = page.getByRole("region", { name: "지난주 리캡" });
+    await showLastWeek(page);
+    const card = page.getByRole("region", { name: "주별 리캡" });
+    await expect(page.getByRole("region", { name: "월별 리캡" })).toHaveCount(0);
     await expect(card.getByText("65,000원", { exact: false }).first()).toBeVisible();
     await expect(card.getByText("4건")).toBeVisible();
     await expect(card.getByText("전주보다 25,000원 더 썼어요")).toBeVisible();
@@ -636,7 +657,7 @@ test.describe("지난주 리캡", () => {
     await expect(card.getByRole("listitem").first()).toContainText("제일 큰 지출");
     await expect(card.getByText("작은 지출")).toHaveCount(0);
     await expect(card.getByText("지난주 적금")).toHaveCount(0);
-    await expect(card.getByText(/이번 달은 예산 안이에요/)).toBeVisible();
+    await expect(card.getByText(/예산 안/)).toBeVisible();
     await expect(
       card.getByText(`${shortDay(week.from)} ~ ${shortDay(week.to)}`)
     ).toBeVisible();
@@ -649,13 +670,77 @@ test.describe("지난주 리캡", () => {
     await expect(card).toBeVisible();
     await page.getByRole("tab", { name: "내역" }).click();
 
+    // 주를 옮기면 리캡도 그 주 것으로 바뀐다.
+    await page.getByRole("button", { name: "이전 주" }).click();
+    await expect(card.getByText("40,000원", { exact: false }).first()).toBeVisible();
+    await expect(card.getByText("전주에는 지출 기록이 없어요")).toBeVisible();
+    await expect(card.getByRole("listitem").first()).toContainText("그 전 주");
+    await page.getByRole("button", { name: "다음 주" }).click();
+    await expect(card.getByText("전주보다 25,000원 더 썼어요")).toBeVisible();
+    // 이번 주는 아직 지출이 없어 카드를 띄우지 않는다.
+    await page.getByRole("button", { name: "이번 주" }).click();
+    await expect(card).toHaveCount(0);
+
     await addEntry(request, token, {
       entryDate: week.to,
       amount: 1_000,
       memo: "뒤늦은 기록",
     });
     await page.reload();
+    await showLastWeek(page);
     await expect(card.getByText("전주보다 26,000원 더 썼어요")).toBeVisible();
+  });
+
+  test("월별 리캡: 고른 달을 따라가고 진행 중인 달은 지난달 같은 기간과 비교한다", async ({
+    page,
+    request,
+    token,
+  }) => {
+    const twoMonthsAgo = kst().subtract(2, "month").format("YYYY-MM");
+    await addEntry(request, token, {
+      entryDate: today(),
+      amount: 5_000,
+      memo: "이번 달",
+    });
+    await addEntry(request, token, {
+      entryDate: `${lastMonth()}-01`,
+      amount: 30_000,
+      memo: "지난달 큰 지출",
+    });
+    await addEntry(request, token, {
+      entryDate: `${twoMonthsAgo}-01`,
+      amount: 10_000,
+      memo: "지지난달",
+    });
+
+    await openLedger(page, token);
+    const card = page.getByRole("region", { name: "월별 리캡" });
+    await expect(card.getByText("5,000원", { exact: false }).first()).toBeVisible();
+    await expect(card.getByText("지난달 같은 기간보다 25,000원 덜 썼어요")).toBeVisible();
+    await expect(
+      card.getByText(`${shortDay(`${thisMonth()}-01`)} ~ ${shortDay(today())}`)
+    ).toBeVisible();
+
+    await page.getByRole("button", { name: "이전 달" }).click();
+    await expect(card.getByText("30,000원", { exact: false }).first()).toBeVisible();
+    await expect(card.getByText("지난달보다 20,000원 더 썼어요")).toBeVisible();
+    await expect(card.getByRole("listitem").first()).toContainText("지난달 큰 지출");
+    await expect(
+      card.getByText(
+        `${shortDay(`${lastMonth()}-01`)} ~ ${shortDay(
+          kst(`${lastMonth()}-01`).endOf("month").format("YYYY-MM-DD")
+        )}`
+      )
+    ).toBeVisible();
+
+    await page.getByRole("button", { name: "이번 달" }).click();
+    await expect(card.getByText("지난달 같은 기간보다 25,000원 덜 썼어요")).toBeVisible();
+    await page
+      .getByRole("group", { name: "기간 단위" })
+      .getByRole("button", { name: "주" })
+      .click();
+    await expect(card).toHaveCount(0);
+    await expect(page.getByRole("region", { name: "주별 리캡" })).toBeVisible();
   });
 
   test("내용이 빈 내역은 소분류나 분류 이름으로 보여 준다", async ({
@@ -663,7 +748,7 @@ test.describe("지난주 리캡", () => {
     request,
     token,
   }) => {
-    const week = lastCompletedWeek(today());
+    const week = lastWeek();
     const categoryId = await getCategories(request, token);
     const subcategoryId = await createItem(request, token, "/api/ledger/subcategories", {
       categoryId: categoryId("교통"),
@@ -682,27 +767,40 @@ test.describe("지난주 리캡", () => {
     });
 
     await openLedger(page, token);
-    const items = page.getByRole("region", { name: "지난주 리캡" }).getByRole("listitem");
+    await showLastWeek(page);
+    const items = page.getByRole("region", { name: "주별 리캡" }).getByRole("listitem");
     await expect(items.first()).toContainText("택시");
     await expect(items.nth(1)).toContainText("식비");
   });
 
   test("전주 기록이 없으면 그렇게 안내한다", async ({ page, request, token }) => {
-    const week = lastCompletedWeek(today());
+    const week = lastWeek();
     await addEntry(request, token, { entryDate: week.to, amount: 3_000, memo: "지난주" });
     await openLedger(page, token);
+    await showLastWeek(page);
     await expect(
       page
-        .getByRole("region", { name: "지난주 리캡" })
+        .getByRole("region", { name: "주별 리캡" })
         .getByText("전주에는 지출 기록이 없어요")
     ).toBeVisible();
   });
 
-  test("지난주 지출이 없으면 카드를 띄우지 않는다", async ({ page, request, token }) => {
-    await addEntry(request, token, { entryDate: today(), amount: 3_000, memo: "오늘" });
+  test("기간에 지출이 없으면 카드를 띄우지 않는다", async ({ page, request, token }) => {
+    await addEntry(request, token, {
+      entryDate: today(),
+      kind: "income",
+      amount: 50_000,
+      memo: "오늘 입금",
+    });
     await openLedger(page, token);
-    await expect(page.getByRole("button", { name: /오늘/ }).first()).toBeVisible();
-    await expect(page.getByRole("region", { name: "지난주 리캡" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /오늘 입금/ }).first()).toBeVisible();
+    await expect(page.getByRole("region", { name: "월별 리캡" })).toHaveCount(0);
+    await page
+      .getByRole("group", { name: "기간 단위" })
+      .getByRole("button", { name: "주" })
+      .click();
+    await expect(page.getByRole("button", { name: /오늘 입금/ }).first()).toBeVisible();
+    await expect(page.getByRole("region", { name: "주별 리캡" })).toHaveCount(0);
   });
 });
 
@@ -1808,7 +1906,8 @@ test.describe("3D 보기", () => {
     await expect(
       page.getByText("나무는 무지출한 날이고", { exact: false })
     ).toBeVisible();
-    await expect(page.getByText("오늘 점심")).toBeVisible();
+    // 리캡 카드의 큰 지출에도 같은 메모가 나오므로 내역 줄(버튼)로 찾는다.
+    await expect(page.getByRole("button", { name: /오늘 점심/ })).toBeVisible();
 
     await toggle.getByRole("button", { name: "달력", exact: true }).click();
     await expect(city).toHaveCount(0);
@@ -1818,12 +1917,12 @@ test.describe("3D 보기", () => {
 });
 
 test.describe("3D 영수증과 여행 깃발", () => {
-  test("지난주 영수증을 뽑으면 내역과 합계가 찍힌 이미지를 저장할 수 있다", async ({
+  test("주간 영수증을 뽑으면 내역과 합계가 찍힌 이미지를 저장할 수 있다", async ({
     page,
     request,
     token,
   }) => {
-    const week = lastCompletedWeek(today());
+    const week = lastWeek();
     await addEntry(request, token, {
       entryDate: week.from,
       amount: 12_000,
@@ -1846,12 +1945,13 @@ test.describe("3D 영수증과 여행 깃발", () => {
     // 캔버스가 뜰 때까지만 조금씩 흘려 연출이 거의 시작되지 않은 상태에서 누른다.
     await page.clock.install();
     await openLedger(page, token);
+    await showLastWeek(page);
     const printButton = page.getByRole("button", { name: "영수증 뽑기" });
     // 리캡 데이터가 그려진 뒤에 멈춘다(데이터 갱신도 타이머를 쓴다).
     await expect(printButton).toBeVisible();
     await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 1_000);
     await printButton.click();
-    const dialog = page.getByRole("dialog", { name: "지난주 영수증" });
+    const dialog = page.getByRole("dialog", { name: "주간 영수증" });
     const canvas = dialog.getByTestId("receipt-printer").locator("canvas");
     await expect(async () => {
       await page.clock.runFor(50);
@@ -1861,7 +1961,7 @@ test.describe("3D 영수증과 여행 깃발", () => {
     await page.clock.resume();
 
     await expect(
-      dialog.getByRole("img", { name: "지난주 영수증, 합계 15,500원" })
+      dialog.getByRole("img", { name: "주간 영수증, 합계 15,500원" })
     ).toBeVisible();
     await expect(
       dialog.getByText(`${shortDay(week.from)} 월요일 점심 12,000`)
@@ -1884,16 +1984,17 @@ test.describe("3D 영수증과 여행 깃발", () => {
   }) => {
     await page.emulateMedia({ reducedMotion: "reduce" });
     await addEntry(request, token, {
-      entryDate: lastCompletedWeek(today()).from,
+      entryDate: lastWeek().from,
       amount: 7_000,
       memo: "지난주 지출",
     });
 
     await openLedger(page, token);
+    await showLastWeek(page);
     await page.getByRole("button", { name: "영수증 뽑기" }).click();
-    const dialog = page.getByRole("dialog", { name: "지난주 영수증" });
+    const dialog = page.getByRole("dialog", { name: "주간 영수증" });
     await expect(
-      dialog.getByRole("img", { name: "지난주 영수증, 합계 7,000원" })
+      dialog.getByRole("img", { name: "주간 영수증, 합계 7,000원" })
     ).toBeVisible();
     await expect(dialog.getByTestId("receipt-printer")).toHaveCount(0);
   });
@@ -2009,7 +2110,7 @@ test.describe("주 단위 보기", () => {
       page.getByRole("button", { name: /^\d+월 \d+일 \(.\), 지출/ })
     ).toHaveCount(7);
     await monday.click();
-    await expect(page.getByText("월요일 점심")).toBeVisible();
+    await expect(page.getByRole("button", { name: /월요일 점심/ })).toBeVisible();
     await expect(page.getByText("이 주 지출 15,000원")).toBeVisible();
   });
 

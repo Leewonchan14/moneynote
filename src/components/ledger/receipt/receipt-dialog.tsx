@@ -16,7 +16,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { kst } from "@/lib/kst";
-import type { LedgerWeeklyRecap } from "@/lib/ledger/recap";
+import type { LedgerRecap } from "@/lib/ledger/recap";
 import { buildReceiptLines, receiptLineText } from "@/lib/ledger/receipt";
 
 // three.js는 영수증을 뽑을 때만 받는다.
@@ -28,8 +28,11 @@ const ReceiptPrinter = dynamic(
   }
 );
 
+const receiptTitle = (recap: LedgerRecap) =>
+  recap.period === "week" ? "주간 영수증" : "월간 영수증";
+
 interface Props {
-  recap: LedgerWeeklyRecap;
+  recap: LedgerRecap;
   budgetLine: string | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -43,7 +46,7 @@ export const ReceiptDialog = ({ recap, budgetLine, open, onOpenChange }: Props) 
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>지난주 영수증</DialogTitle>
+          <DialogTitle>{receiptTitle(recap)}</DialogTitle>
           <DialogDescription>
             {shortDate(recap.from)} ~ {shortDate(recap.to)} 지출을 한 장으로 뽑았어요.
           </DialogDescription>
@@ -66,7 +69,7 @@ const ReceiptBody = ({
   budgetLine,
   onReprint,
 }: {
-  recap: LedgerWeeklyRecap;
+  recap: LedgerRecap;
   budgetLine: string | null;
   onReprint: () => void;
 }) => {
@@ -99,7 +102,7 @@ const ReceiptBody = ({
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={image}
-        alt={`지난주 영수증, 합계 ${recap.expense.toLocaleString("ko-KR")}원`}
+        alt={`${receiptTitle(recap)}, 합계 ${recap.expense.toLocaleString("ko-KR")}원`}
         className="w-full max-w-[300px] animate-in drop-shadow-md duration-500 fade-in slide-in-from-top-4"
       />
       <ul className="sr-only">

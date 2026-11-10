@@ -1,5 +1,5 @@
 import { kst } from "@/lib/kst";
-import type { LedgerWeeklyRecap } from "@/lib/ledger/recap";
+import type { LedgerRecap } from "@/lib/ledger/recap";
 
 /** 영수증 한 줄. 그리는 쪽(캔버스)과 화면 읽기용 텍스트가 같은 목록을 쓴다. */
 export type ReceiptLine =
@@ -24,7 +24,7 @@ const diffText = (expense: number, previous: number) => {
 };
 
 export const buildReceiptLines = (
-  recap: LedgerWeeklyRecap,
+  recap: LedgerRecap,
   options: { printedAt: string; budgetLine?: string | null }
 ): ReceiptLine[] => {
   const from = kst(recap.from);
@@ -43,10 +43,11 @@ export const buildReceiptLines = (
   const topCategory = [...byCategory.entries()].sort((a, b) => b[1] - a[1])[0];
   const spendDays = new Set(recap.items.map((item) => item.date)).size;
   const days = to.diff(from, "day") + 1;
+  const isWeek = recap.period === "week";
 
   return [
     { kind: "title", text: "MONEYNOTE" },
-    { kind: "center", text: "머니노트 주간 영수증" },
+    { kind: "center", text: `머니노트 ${isWeek ? "주간" : "월간"} 영수증` },
     {
       kind: "center",
       text: `${from.format("YYYY.MM.DD (ddd)")} ~ ${to.format("MM.DD (ddd)")}`,
@@ -73,7 +74,7 @@ export const buildReceiptLines = (
     { kind: "total", left: "합계", right: `${won(recap.expense)}원` },
     {
       kind: "row",
-      left: "전주 대비",
+      left: isWeek ? "전주 대비" : "전월 대비",
       right: diffText(recap.expense, recap.previousExpense),
       muted: true,
     },
@@ -97,7 +98,10 @@ export const buildReceiptLines = (
       seed: `${recap.from}:${recap.expense}`,
       text: `MN-${from.format("YYYYMMDD")}-${String(recap.expenseCount).padStart(3, "0")}`,
     },
-    { kind: "center", text: "이번 주도 수고했어요 :)" },
+    {
+      kind: "center",
+      text: isWeek ? "이번 주도 수고했어요 :)" : "이번 달도 수고했어요 :)",
+    },
     { kind: "center", text: `출력 ${options.printedAt}`, muted: true },
   ];
 };
