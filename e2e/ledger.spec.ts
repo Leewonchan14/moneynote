@@ -1760,6 +1760,64 @@ test.describe("여행", () => {
     await expect(page.getByRole("button", { name: /여행 지출/ })).toHaveCount(0);
   });
 
+  test("여행 제외는 내역·달력·통계 탭이 함께 쓴다", async ({ page, request, token }) => {
+    const tripId = await createTrip(request, token, "제주 여행", today(), today());
+    await addEntry(request, token, {
+      entryDate: today(),
+      amount: 70_000,
+      memo: "여행 지출",
+      tripId,
+    });
+    await addEntry(request, token, {
+      entryDate: today(),
+      amount: 5_000,
+      memo: "일상 지출",
+      tripId: null,
+    });
+
+    const recap = async (query: string) => {
+      const res = await request.get(`/api/ledger/recap?period=month&${query}`, {
+        headers: authHeaders(token),
+      });
+      return (await res.json()).recap;
+    };
+    expect((await recap("")).expense).toBe(75_000);
+    const without = await recap("excludeTrips=1");
+    expect(without.expense).toBe(5_000);
+    expect(without.items.map((item: { label: string }) => item.label)).toEqual([
+      "일상 지출",
+    ]);
+
+    await openLedger(page, token);
+    const chip = page.getByRole("button", { name: "여행 제외" });
+    const tripRow = page.getByRole("button", { name: /여행 지출/ });
+    await expect(tripRow).toBeVisible();
+    await expect(page.getByText("75,000원", { exact: true }).first()).toBeVisible();
+
+    await chip.click();
+    await expect(chip).toHaveAttribute("aria-pressed", "true");
+    await expect(tripRow).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /일상 지출/ })).toBeVisible();
+    await expect(page.getByText("75,000원", { exact: true })).toHaveCount(0);
+    await expect(page.getByText("5,000원").first()).toBeVisible();
+
+    await page.getByRole("tab", { name: "달력" }).click();
+    await expect(chip).toHaveAttribute("aria-pressed", "true");
+    await expect(tripRow).toHaveCount(0);
+    await expect(page.getByText("75,000원", { exact: true })).toHaveCount(0);
+
+    await openStats(page);
+    await expect(chip).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByText("총 지출 · 1건")).toBeVisible();
+
+    // 통계에서 끄면 내역에서도 꺼져 있다.
+    await chip.click();
+    await expect(page.getByText("총 지출 · 2건")).toBeVisible();
+    await page.getByRole("tab", { name: "내역" }).click();
+    await expect(chip).toHaveAttribute("aria-pressed", "false");
+    await expect(tripRow).toBeVisible();
+  });
+
   test("지워도 내역과 분류는 남는다", async ({ page, request, token }) => {
     const categoryId = await getCategories(request, token);
     const tripId = await createTrip(request, token, "지울 여행", today(), today());

@@ -32,7 +32,8 @@ export const GET = async (req: Request) => {
         : today.slice(0, 7);
 
   try {
-    return Response.json({ recap: await getLedgerRecap(period, key) });
+    const excludeTrips = params.get("excludeTrips") === "1";
+    return Response.json({ recap: await getLedgerRecap(period, key, { excludeTrips }) });
   } catch (error) {
     return ledgerErrorResponse(error, { fallback: "리캡을 불러오지 못했어요." });
   }

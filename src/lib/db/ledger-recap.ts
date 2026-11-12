@@ -16,20 +16,27 @@ const entryLabel = (entry: LedgerEntryView) =>
 /** 고른 달이나 주의 리캡. key는 달이면 YYYY-MM, 주면 그 주 월요일이다. */
 export const getLedgerRecap = async (
   period: LedgerRecapPeriod,
-  key: string
+  key: string,
+  options: { excludeTrips?: boolean } = {}
 ): Promise<LedgerRecap> => {
+  const { excludeTrips = false } = options;
   const today = kst().format("YYYY-MM-DD");
   const range = recapRange(period, key, today);
 
   const [current, previous, ledger] = await Promise.all([
-    getLedgerStats(range.from, range.to),
-    getLedgerStats(range.previousFrom, range.previousTo),
+    getLedgerStats(range.from, range.to, { excludeTrips }),
+    getLedgerStats(range.previousFrom, range.previousTo, { excludeTrips }),
     getLedgerMonth(range.month),
   ]);
 
   const expenses = current.entries.filter((entry) => entry.kind === "expense");
   const total = ledger.budget.totalBudget;
-  const spent = ledger.summary.expense;
+  // 여행을 빼고 볼 때는 예산 사용량도 여행 지출을 뺀 금액으로 본다.
+  const spent = excludeTrips
+    ? ledger.entries
+        .filter((entry) => entry.kind === "expense" && entry.tripId == null)
+        .reduce((sum, entry) => sum + entry.amount, 0)
+    : ledger.summary.expense;
   const pace = getBudgetPace({ month: range.month, today, budget: total, spent });
 
   return {
