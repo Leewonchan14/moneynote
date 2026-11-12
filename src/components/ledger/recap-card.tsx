@@ -70,19 +70,26 @@ const isOverBudget = (budget: LedgerRecap["budget"]): boolean => {
 export const RecapCard = ({
   period,
   periodKey,
+  excludeTrips = false,
 }: {
   period: LedgerRecapPeriod;
   periodKey: string;
+  /** 여행에 묶인 지출을 빼고 본다. */
+  excludeTrips?: boolean;
 }) => {
   const token = useAuthStore((s) => s.token);
   const [receiptOpen, setReceiptOpen] = useState(false);
   const { data: recap, isPlaceholderData } = useQuery({
-    queryKey: ledgerKeys.recap(period, periodKey),
+    queryKey: ledgerKeys.recap(
+      period,
+      periodKey,
+      excludeTrips ? "without-trips" : undefined
+    ),
     queryFn: async () => {
       const param = period === "week" ? "week" : "month";
       const { recap } = await ledgerRequest<{ recap: LedgerRecap }>(
         token,
-        `/api/ledger/recap?period=${period}&${param}=${periodKey}`
+        `/api/ledger/recap?period=${period}&${param}=${periodKey}${excludeTrips ? "&excludeTrips=1" : ""}`
       );
       return recap;
     },

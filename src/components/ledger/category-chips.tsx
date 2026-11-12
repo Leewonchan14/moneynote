@@ -35,6 +35,24 @@ export const categoryChipClass = (active: boolean) =>
     !active && "border-border bg-card text-muted-foreground hover:text-foreground"
   );
 
+/** 여행에 묶인 내역을 빼고 보는 토글. 내역·달력·통계 탭이 같은 값을 함께 쓴다. */
+export const ExcludeTripsChip = ({
+  value,
+  onChange,
+}: {
+  value: boolean;
+  onChange: (value: boolean) => void;
+}) => (
+  <button
+    type="button"
+    aria-pressed={value}
+    onClick={() => onChange(!value)}
+    className={categoryChipClass(value)}
+  >
+    여행 제외
+  </button>
+);
+
 export const ExpenseCategoryChips = ({
   label,
   categories,

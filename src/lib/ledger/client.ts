@@ -7,7 +7,8 @@ export const ledgerKeys = {
   tripCandidates: (tripId: number) => ["ledger", "trip-candidates", tripId] as const,
   search: (query: string) => ["ledger", "search", query] as const,
   history: ["ledger", "history"] as const,
-  recap: (period: string, key: string) => ["ledger", "recap", period, key] as const,
+  recap: (period: string, key: string, scope?: string) =>
+    ["ledger", "recap", period, key, scope ?? "all-entries"] as const,
   suggestions: ["ledger", "suggestions"] as const,
   recurringCandidates: ["ledger", "recurring-candidates"] as const,
   insights: (month: string, scope?: string) =>
