@@ -1851,7 +1851,15 @@ test.describe("여행", () => {
     const dailyRow = page.getByRole("button", { name: /일상 지출/ });
     const pickTrip = async (name: string) => {
       await page.getByRole("combobox", { name: "여행별 보기" }).click();
-      await page.getByRole("option", { name: new RegExp(name) }).click();
+      const option = page.getByRole("option", { name: new RegExp(name) });
+      // 여행 이름·기간이 체크 표시 밑으로 넘치지 않는다.
+      const overflow = await option.evaluate((el) => {
+        const text = el.firstElementChild!.getBoundingClientRect();
+        const box = el.getBoundingClientRect();
+        return text.right - (box.right - parseFloat(getComputedStyle(el).paddingRight));
+      });
+      expect(overflow).toBeLessThanOrEqual(0);
+      await option.click();
     };
 
     await pickTrip("제주 여행");

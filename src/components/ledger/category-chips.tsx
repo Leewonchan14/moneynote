@@ -106,7 +106,11 @@ export const TripScopePicker = ({
           <Plane className="size-3" />
           <SelectValue placeholder="여행별 보기" />
         </SelectTrigger>
-        <SelectContent align="start">
+        {/* 기본 팝업은 버튼 너비에 고정이라, 여행 이름과 기간이 길면 체크 표시 밑으로 넘친다. */}
+        <SelectContent
+          align="start"
+          className="w-max max-w-(--available-width) min-w-[max(var(--anchor-width),9rem)]"
+        >
           {items.map((item) => (
             <SelectItem key={item.value} value={item.value}>
               {item.label}
