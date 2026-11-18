@@ -11,42 +11,51 @@ export type TripScope = "all" | "exclude" | number;
 export const matchesTripScope = (tripId: number | null, scope: TripScope) =>
   scope === "all" || (scope === "exclude" ? tripId == null : tripId === scope);
 
+type LedgerEntry = LedgerMonthPayload["entries"][number];
+
+/** 날짜별 지출·입금 합계. 달력이 쓰는 모양이다(이체는 넣지 않는다). */
+export const calendarOf = (entries: LedgerEntry[]) => {
+  const byDate = new Map<string, { expense: number; income: number }>();
+  for (const entry of entries) {
+    if (entry.kind === "transfer") continue;
+    const day = byDate.get(entry.entryDate) ?? { expense: 0, income: 0 };
+    if (entry.kind === "income") day.income += entry.amount;
+    else day.expense += entry.amount;
+    byDate.set(entry.entryDate, day);
+  }
+  return [...byDate.entries()]
+    .map(([date, totals]) => ({ date, ...totals }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+};
+
 /**
- * 여행 범위에 맞는 내역만 남긴 달 데이터. 합계·분류별 지출·날짜별 합계·예산 사용량을 남은
+ * 조건에 맞는 내역만 남긴 달 데이터. 합계·분류별 지출·날짜별 합계·예산 사용량을 남은
  * 내역으로 다시 계산하고, 잔액·예산 설정·여행 목록처럼 내역 필터와 무관한 값은 그대로 둔다.
  */
-export const scopeLedgerToTrips = (
+export const scopeLedgerEntries = (
   ledger: LedgerMonthPayload,
-  scope: TripScope
+  keep: (entry: LedgerEntry) => boolean
 ): LedgerMonthPayload => {
-  if (scope === "all") return ledger;
-  const entries = ledger.entries.filter((entry) => matchesTripScope(entry.tripId, scope));
+  const entries = ledger.entries.filter(keep);
   if (entries.length === ledger.entries.length) return ledger;
 
   let income = 0;
   let expense = 0;
   let transfer = 0;
   const byCategoryAmount = new Map<number | null, number>();
-  const byDate = new Map<string, { expense: number; income: number }>();
 
   for (const entry of entries) {
     if (entry.kind === "transfer") {
       transfer += entry.amount;
-      continue;
-    }
-    const day = byDate.get(entry.entryDate) ?? { expense: 0, income: 0 };
-    if (entry.kind === "income") {
+    } else if (entry.kind === "income") {
       income += entry.amount;
-      day.income += entry.amount;
     } else {
       expense += entry.amount;
-      day.expense += entry.amount;
       byCategoryAmount.set(
         entry.categoryId,
         (byCategoryAmount.get(entry.categoryId) ?? 0) + entry.amount
       );
     }
-    byDate.set(entry.entryDate, day);
   }
 
   const totalBudget = ledger.budget.totalBudget;
@@ -77,8 +86,15 @@ export const scopeLedgerToTrips = (
       })
       .filter((row) => row.amount > 0)
       .sort((a, b) => b.amount - a.amount),
-    calendar: [...byDate.entries()]
-      .map(([date, totals]) => ({ date, ...totals }))
-      .sort((a, b) => a.date.localeCompare(b.date)),
+    calendar: calendarOf(entries),
   };
 };
+
+/** 여행 범위에 맞는 내역만 남긴 달 데이터. */
+export const scopeLedgerToTrips = (
+  ledger: LedgerMonthPayload,
+  scope: TripScope
+): LedgerMonthPayload =>
+  scope === "all"
+    ? ledger
+    : scopeLedgerEntries(ledger, (entry) => matchesTripScope(entry.tripId, scope));

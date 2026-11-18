@@ -12,7 +12,7 @@ import {
   Settings2,
   Wallet,
 } from "lucide-react";
-import { useDeferredValue, useMemo, useState } from "react";
+import { useCallback, useDeferredValue, useMemo, useState } from "react";
 
 import { AppShell } from "@/components/app-shell";
 import { CalendarView } from "@/components/ledger/calendar-view";
@@ -43,7 +43,11 @@ import {
   type LedgerSettingsTab,
 } from "@/components/ledger/settings-dialog";
 import { RecurringTab } from "@/components/ledger/settings-extra";
-import { CategoryCard, StatsView } from "@/components/ledger/stats-view";
+import {
+  CategoryCard,
+  StatsView,
+  type StatsCategoryFilter,
+} from "@/components/ledger/stats-view";
 import { groupTopExpenses, TopExpensesList } from "@/components/ledger/top-expenses";
 import { ViewToggle } from "@/components/ledger/view-toggle";
 import { Button } from "@/components/ui/button";
@@ -64,7 +68,12 @@ import {
   todayKst,
 } from "@/lib/ledger/format";
 import { getBudgetPace, type LedgerBudgetPace } from "@/lib/ledger/pace";
-import { scopeLedgerToTrips, type TripScope } from "@/lib/ledger/trip-scope";
+import {
+  calendarOf,
+  scopeLedgerEntries,
+  scopeLedgerToTrips,
+  type TripScope,
+} from "@/lib/ledger/trip-scope";
 import {
   formatWeekKo,
   isInWeek,
@@ -484,16 +493,47 @@ export const LedgerPage = () => {
     [periodEntries, filterAsset]
   );
 
+  // 탭 아래 분류·소분류 필터. 내역·달력·통계 탭이 함께 쓴다.
+  const matchesCategoryFilter = useCallback(
+    (entry: LedgerEntryView) =>
+      filterCategoryId == null ||
+      (entry.categoryId === filterCategoryId && matchesSubcategory(entry, filterSub)),
+    [filterCategoryId, filterSub]
+  );
+
   const listEntries = useMemo(
+    () => assetEntries.filter(matchesCategoryFilter),
+    [assetEntries, matchesCategoryFilter]
+  );
+
+  const filterCategoryName = filterCategory?.name ?? null;
+  const statsCategoryFilter = useMemo<StatsCategoryFilter | null>(
     () =>
-      filterCategoryId == null
-        ? assetEntries
-        : assetEntries.filter(
-            (entry) =>
-              entry.categoryId === filterCategoryId &&
-              matchesSubcategory(entry, filterSub)
-          ),
-    [assetEntries, filterCategoryId, filterSub]
+      filterCategoryName
+        ? {
+            label: [filterCategoryName, filterSubName].filter(Boolean).join(" · "),
+            hasSubcategory: filterSub !== "all",
+            matches: matchesCategoryFilter,
+          }
+        : null,
+    [filterCategoryName, filterSubName, filterSub, matchesCategoryFilter]
+  );
+
+  // 달력은 고른 분류(소분류)의 내역과 날짜별 합계만 보여 준다. 결제수단 필터는 내역 탭에만 쓴다.
+  const calendarEntries = useMemo(
+    () => periodEntries.filter(matchesCategoryFilter),
+    [periodEntries, matchesCategoryFilter]
+  );
+  const calendarLedger = useMemo(
+    () =>
+      ledger && filterCategoryId != null
+        ? scopeLedgerEntries(ledger, matchesCategoryFilter)
+        : ledger,
+    [ledger, filterCategoryId, matchesCategoryFilter]
+  );
+  const calendarDays = useMemo(
+    () => (filterCategoryId == null ? periodCalendar : calendarOf(calendarEntries)),
+    [filterCategoryId, periodCalendar, calendarEntries]
   );
 
   // 결제수단만 고른 경우 분류별 지출을 그 결제수단 내역으로 다시 계산한다.
@@ -624,6 +664,20 @@ export const LedgerPage = () => {
   const isOverBudget = (ledger?.summary.budgetRemaining ?? 0) < 0;
   const hidesMonthSummary =
     tab === "stats" || tab === "savings" || tab === "recurring" || tab === "trips";
+  const allSubcategoryOptions = useMemo(
+    () => [
+      ...(ledger?.subcategories ?? []).map((sub) => ({
+        categoryId: sub.categoryId,
+        subcategoryId: sub.id as number | null,
+      })),
+      ...(filterCategoryId == null
+        ? []
+        : [{ categoryId: filterCategoryId, subcategoryId: null }]),
+    ],
+    [ledger?.subcategories, filterCategoryId]
+  );
+  const showsCategoryFilter =
+    tab === "stats" || tab === "calendar" || (tab === "list" && !deferredSearch);
   const balanceNeedsSetup =
     ledger != null &&
     ledger.account.baseDate != null &&
@@ -674,6 +728,29 @@ export const LedgerPage = () => {
         {/* 탭은 항상 같은 자리에 두고, 월 이동은 그 아래 왼쪽에 둔다. */}
         <div className="mt-5 flex flex-col items-start gap-2">
           <LedgerTabs tab={tab} onChange={setTab} />
+
+          {/* 분류 필터는 내역·달력·통계 탭이 함께 쓴다. 검색 결과는 전체 기간·분류를 보여 준다. */}
+          {ledger && showsCategoryFilter && (
+            <div className="flex w-full flex-col gap-1.5">
+              <ExpenseCategoryChips
+                label="분류 필터"
+                categories={ledger.categories}
+                selected={filterCategory?.id ?? "all"}
+                onSelect={selectCategoryFilter}
+              />
+              {filterCategory && (
+                <SubcategoryChips
+                  label="소분류 필터"
+                  categoryId={filterCategory.id}
+                  subcategories={ledger.subcategories}
+                  // 통계는 기간을 따로 고르니 이 달에 안 쓴 소분류도 모두 띄운다.
+                  entries={tab === "stats" ? allSubcategoryOptions : periodEntries}
+                  selected={filterSub}
+                  onSelect={setSubcategoryFilter}
+                />
+              )}
+            </div>
+          )}
 
           {!hidesMonthSummary && (
             <div className="-ml-2 flex flex-wrap items-center gap-1">
@@ -896,26 +973,6 @@ export const LedgerPage = () => {
                     />
                   )}
 
-                  {!deferredSearch && (
-                    <ExpenseCategoryChips
-                      label="내역 분류"
-                      categories={ledger.categories}
-                      selected={filterCategory?.id ?? "all"}
-                      onSelect={selectCategoryFilter}
-                    />
-                  )}
-
-                  {!deferredSearch && filterCategory && (
-                    <SubcategoryChips
-                      label="내역 소분류"
-                      categoryId={filterCategory.id}
-                      subcategories={ledger.subcategories}
-                      entries={assetEntries}
-                      selected={filterSub}
-                      onSelect={setSubcategoryFilter}
-                    />
-                  )}
-
                   {!deferredSearch && filterLabel && dayGroups.length > 0 && (
                     <p className="px-1 text-[12px] text-muted-foreground tabular-nums">
                       {periodLabel} {filterLabel} {listEntries.length}건 · 지출{" "}
@@ -1038,10 +1095,10 @@ export const LedgerPage = () => {
 
               {tab === "calendar" && (
                 <CalendarView
-                  ledger={ledger}
+                  ledger={calendarLedger ?? ledger}
                   weekStart={isWeek ? weekStart : null}
-                  entries={periodEntries}
-                  calendar={periodCalendar}
+                  entries={calendarEntries}
+                  calendar={calendarDays}
                   activeDay={activeDay}
                   onSelectDay={setSelectedDay}
                   onEdit={openEdit}
@@ -1057,7 +1114,6 @@ export const LedgerPage = () => {
               {tab === "stats" && (
                 <StatsView
                   categories={ledger.categories}
-                  subcategories={ledger.subcategories}
                   month={month}
                   onMonthChange={changeMonth}
                   initialPeriod={period}
@@ -1073,6 +1129,7 @@ export const LedgerPage = () => {
                   }
                   tripId={focusedTrip?.id ?? null}
                   onTripChange={(id) => changeTripScope(id ?? "all")}
+                  categoryFilter={statsCategoryFilter}
                 />
               )}
             </>

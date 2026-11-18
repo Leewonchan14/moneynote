@@ -9,7 +9,7 @@ import {
   ChevronRight,
   Wallet,
 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import {
   Bar,
   BarChart,
@@ -23,15 +23,7 @@ import {
   type PieSectorShapeProps,
 } from "recharts";
 
-import {
-  categoryChipClass,
-  ExcludeTripsChip,
-  ExpenseCategoryChips,
-  matchesSubcategory,
-  SubcategoryChips,
-  type CategoryFilter,
-  type SubcategoryFilter,
-} from "@/components/ledger/category-chips";
+import { categoryChipClass, ExcludeTripsChip } from "@/components/ledger/category-chips";
 import {
   CATEGORY_COLOR_HEX,
   CategoryIcon,
@@ -74,7 +66,6 @@ import { cn } from "@/lib/utils";
 
 interface Props {
   categories: LedgerMonthPayload["categories"];
-  subcategories: LedgerMonthPayload["subcategories"];
   month: string;
   onMonthChange: (month: string) => void;
   expenseReference: LedgerMonthPayload["expenseReference"];
@@ -92,7 +83,73 @@ interface Props {
   /** 내역·달력 탭에서 고른 여행. 여행 리포트가 이 여행을 보여 주고, 여기서 바꾸면 그쪽도 바뀐다. */
   tripId: number | null;
   onTripChange: (tripId: number | null) => void;
+  /** 탭 아래 분류 필터에서 고른 분류(소분류). 내역·달력 탭과 함께 쓴다. */
+  categoryFilter: StatsCategoryFilter | null;
 }
+
+export type StatsCategoryFilter = {
+  /** `식비` 또는 `식비 · 배달` */
+  label: string;
+  hasSubcategory: boolean;
+  matches: (entry: LedgerEntryView) => boolean;
+};
+
+/**
+ * 고른 분류(소분류)의 내역만 남긴 통계. 합계·분류별·월별·하루 지출을 남은 내역으로 다시 계산한다.
+ * 잔액 추이(balance)와 전체 누적(allTime)은 통장 기준이라 그대로 둔다.
+ */
+const scopeStatsToCategory = (
+  stats: LedgerStats,
+  filter: StatsCategoryFilter | null
+): LedgerStats => {
+  if (!filter) return stats;
+  const entries = stats.entries.filter(filter.matches);
+  const expenses = entries.filter((entry) => entry.kind === "expense");
+  const expense = expenses.reduce((sum, entry) => sum + entry.amount, 0);
+  const spentByDate = new Map<string, number>();
+  const byMonth = new Map<string, number>();
+  const byCategory = new Map<number | null, number>();
+  for (const entry of expenses) {
+    spentByDate.set(
+      entry.entryDate,
+      (spentByDate.get(entry.entryDate) ?? 0) + entry.amount
+    );
+    const month = entry.entryDate.slice(0, 7);
+    byMonth.set(month, (byMonth.get(month) ?? 0) + entry.amount);
+    byCategory.set(
+      entry.categoryId,
+      (byCategory.get(entry.categoryId) ?? 0) + entry.amount
+    );
+  }
+  return {
+    ...stats,
+    summary: {
+      income: 0,
+      expense,
+      net: -expense,
+      avgDailyExpense: Math.round(expense / stats.days),
+      incomeCount: 0,
+      expenseCount: expenses.length,
+    },
+    entries,
+    byCategory: stats.byCategory
+      .filter((row) => byCategory.has(row.categoryId))
+      .map((row) => {
+        const amount = byCategory.get(row.categoryId) ?? 0;
+        return {
+          ...row,
+          amount,
+          pct: expense === 0 ? 0 : Math.round((amount / expense) * 100),
+        };
+      }),
+    monthly: stats.monthly.map((row) => ({
+      month: row.month,
+      income: 0,
+      expense: byMonth.get(row.month) ?? 0,
+    })),
+    daily: stats.daily.map((day) => ({ ...day, spent: spentByDate.get(day.date) ?? 0 })),
+  };
+};
 
 const RANGES = [
   { id: "month", label: "월별" },
@@ -767,41 +824,17 @@ const ENTRY_MORE_SIZE = 20;
 
 const PeriodEntriesCard = ({
   entries,
-  categories,
-  subcategories,
   onEdit,
 }: {
   entries: LedgerEntryView[];
-  categories: LedgerMonthPayload["categories"];
-  subcategories: LedgerMonthPayload["subcategories"];
   onEdit: (entry: LedgerEntryView) => void;
 }) => {
   const [kind, setKind] = useState<EntryKindFilter>("all");
-  const [selected, setSelected] = useState<CategoryFilter>("all");
-  const [selectedSub, setSelectedSub] = useState<SubcategoryFilter>("all");
   const [sortKey, setSortKey] = useState<EntrySortKey>("date");
   const [sortDir, setSortDir] = useState<EntrySortDir>("desc");
   const [visibleCount, setVisibleCount] = useState(ENTRY_PAGE_SIZE);
 
-  const selectCategory = (value: CategoryFilter) => {
-    setSelected(value);
-    setSelectedSub("all");
-    setVisibleCount(ENTRY_PAGE_SIZE);
-  };
-
-  const selectSubcategory = (value: SubcategoryFilter) => {
-    setSelectedSub(value);
-    setVisibleCount(ENTRY_PAGE_SIZE);
-  };
-
-  const rows = entries
-    .filter(
-      (entry) =>
-        (kind === "all" || entry.kind === kind) &&
-        (selected === "all" ||
-          (entry.categoryId === selected && matchesSubcategory(entry, selectedSub)))
-    )
-    .reverse();
+  const rows = entries.filter((entry) => kind === "all" || entry.kind === kind).reverse();
   const sortedRows = sortEntries(rows, sortKey, sortDir);
 
   const expenseTotal = rows
@@ -835,8 +868,7 @@ const PeriodEntriesCard = ({
                 aria-pressed={active}
                 onClick={() => {
                   setKind(option.id);
-                  if (option.id === "income") selectCategory("all");
-                  else setVisibleCount(ENTRY_PAGE_SIZE);
+                  setVisibleCount(ENTRY_PAGE_SIZE);
                 }}
                 className={`rounded-md border px-2.5 py-1 text-[11px] font-medium transition-colors ${
                   active
@@ -893,27 +925,6 @@ const PeriodEntriesCard = ({
           </button>
         </div>
       </div>
-
-      {kind !== "income" && (
-        <ExpenseCategoryChips
-          label="지출·입금 내역 분류"
-          className="mt-1.5"
-          categories={categories}
-          selected={selected}
-          onSelect={selectCategory}
-        />
-      )}
-      {kind !== "income" && selected !== "all" && (
-        <SubcategoryChips
-          label="지출·입금 내역 소분류"
-          className="mt-1.5"
-          categoryId={selected}
-          subcategories={subcategories}
-          entries={entries}
-          selected={selectedSub}
-          onSelect={selectSubcategory}
-        />
-      )}
 
       {rows.length ? (
         <ul className="mt-2 divide-y divide-border">
@@ -1094,44 +1105,21 @@ const MonthlyCard = ({ monthly: rawMonthly }: { monthly: LedgerStats["monthly"] 
 
 const TopExpensesCard = ({
   entries,
-  categories,
-  subcategories,
+  filterLabel,
 }: {
   entries: LedgerEntryView[];
-  categories: LedgerMonthPayload["categories"];
-  subcategories: LedgerMonthPayload["subcategories"];
+  filterLabel?: string;
 }) => {
-  const [selected, setSelected] = useState<CategoryFilter>("all");
-  const [selectedSub, setSelectedSub] = useState<SubcategoryFilter>("all");
-  const merchants = groupTopExpenses(
-    entries.filter((entry) => matchesSubcategory(entry, selectedSub)),
-    selected
-  );
+  const merchants = groupTopExpenses(entries, "all");
 
   return (
     <StatCard>
-      <p className="text-[12px] font-medium text-muted-foreground">큰 지출 TOP 8</p>
-      <ExpenseCategoryChips
-        label="큰 지출 분류"
-        className="mt-1.5"
-        categories={categories}
-        selected={selected}
-        onSelect={(value) => {
-          setSelected(value);
-          setSelectedSub("all");
-        }}
-      />
-      {selected !== "all" && (
-        <SubcategoryChips
-          label="큰 지출 소분류"
-          className="mt-1.5"
-          categoryId={selected}
-          subcategories={subcategories}
-          entries={entries}
-          selected={selectedSub}
-          onSelect={setSelectedSub}
-        />
-      )}
+      <div className="flex items-baseline justify-between gap-2">
+        <p className="text-[12px] font-medium text-muted-foreground">큰 지출 TOP 8</p>
+        {filterLabel && (
+          <span className="text-[11px] text-muted-foreground">{filterLabel}</span>
+        )}
+      </div>
       {merchants.length ? (
         <TopExpensesList items={merchants} className="mt-2" />
       ) : (
@@ -1313,15 +1301,24 @@ const MonthForecastCard = ({
   );
 };
 
-const TripSummaryCard = ({ stats, name }: { stats: LedgerStats; name: string }) => (
+/** 여행 리포트나 분류 필터처럼 지출만 보는 리포트의 요약. */
+const ExpenseSummaryCard = ({
+  stats,
+  name,
+  isTrip,
+}: {
+  stats: LedgerStats;
+  name: string;
+  isTrip: boolean;
+}) => (
   <StatCard className="md:col-span-2">
     <p className="text-[12px] font-medium text-muted-foreground">{name} 총 지출</p>
     <p className="mt-1 text-2xl font-semibold text-primary tabular-nums">
       {formatWon(stats.summary.expense)}
     </p>
     <p className="mt-0.5 text-[11px] text-muted-foreground tabular-nums">
-      {stats.summary.expenseCount}건 · 여행 {stats.days}일 기준 하루{" "}
-      {formatWon(stats.summary.avgDailyExpense)}
+      {stats.summary.expenseCount}건 · {isTrip ? "여행 " : ""}
+      {stats.days}일 기준 하루 {formatWon(stats.summary.avgDailyExpense)}
     </p>
   </StatCard>
 );
@@ -1334,7 +1331,6 @@ const NO_REFERENCE: LedgerMonthPayload["expenseReference"] = {
 
 export const StatsView = ({
   categories,
-  subcategories,
   trips,
   month,
   onMonthChange,
@@ -1348,6 +1344,7 @@ export const StatsView = ({
   onExcludeTripsChange,
   tripId,
   onTripChange,
+  categoryFilter,
 }: Props) => {
   const token = useAuthStore((s) => s.token);
   // 내역·달력에서 여행을 골라 두었으면 그 여행 리포트로 연다.
@@ -1415,7 +1412,11 @@ export const StatsView = ({
     placeholderData: keepPreviousData,
     ...LEDGER_LIVE_QUERY,
   });
-  const stats = statsQuery.data;
+  const stats = useMemo(
+    () =>
+      statsQuery.data ? scopeStatsToCategory(statsQuery.data, categoryFilter) : undefined,
+    [statsQuery.data, categoryFilter]
+  );
 
   const previousRange =
     range === "month"
@@ -1442,7 +1443,15 @@ export const StatsView = ({
     placeholderData: keepPreviousData,
     ...LEDGER_LIVE_QUERY,
   });
-  const insights = range === "month" ? insightsQuery.data : undefined;
+  // 평소 대비·저축 같은 인사이트는 전체 지출 기준이라 분류를 고르면 숨긴다.
+  const insights = range === "month" && !categoryFilter ? insightsQuery.data : undefined;
+  const previousStats = useMemo(
+    () =>
+      previousQuery.data
+        ? scopeStatsToCategory(previousQuery.data, categoryFilter)
+        : undefined,
+    [previousQuery.data, categoryFilter]
+  );
 
   const hasActivity = stats
     ? stats.summary.income !== 0 || stats.summary.expense !== 0
@@ -1642,14 +1651,30 @@ export const StatsView = ({
         </StatCard>
       ) : stats ? (
         <>
-          {isTripReport && activeTrip && (
-            <TripSummaryCard stats={stats} name={activeTrip.name} />
+          {isTripReport && activeTrip ? (
+            <ExpenseSummaryCard
+              stats={stats}
+              name={
+                categoryFilter
+                  ? `${activeTrip.name} ${categoryFilter.label}`
+                  : activeTrip.name
+              }
+              isTrip
+            />
+          ) : (
+            categoryFilter && (
+              <ExpenseSummaryCard
+                stats={stats}
+                name={categoryFilter.label}
+                isTrip={false}
+              />
+            )
           )}
-          {hasActivity && !isTripReport && <KpiCards stats={stats} />}
-          {hasActivity && previousRange && previousQuery.data && (
+          {hasActivity && !isTripReport && !categoryFilter && <KpiCards stats={stats} />}
+          {hasActivity && previousRange && previousStats && (
             <MonthCompareCard
               current={stats}
-              previous={previousQuery.data}
+              previous={previousStats}
               range={previousRange}
               unit={range === "week" ? "week" : "month"}
               isCurrentMonth={
@@ -1659,7 +1684,7 @@ export const StatsView = ({
               wide={range === "week" || month !== thisMonth}
             />
           )}
-          {hasActivity && range === "month" && (
+          {hasActivity && range === "month" && !categoryFilter && (
             <MonthForecastCard
               month={month}
               spent={stats.summary.expense}
@@ -1680,23 +1705,34 @@ export const StatsView = ({
             <>
               <TopExpensesCard
                 entries={stats.entries}
-                categories={categories}
-                subcategories={subcategories}
+                filterLabel={categoryFilter?.label}
               />
-              <CategoryCard
-                total={stats.summary.expense}
-                byCategory={stats.byCategory}
-                entries={stats.entries}
-              />
+              {categoryFilter ? (
+                // 내역 탭과 같다: 분류만 고르면 소분류별, 소분류까지 고르면 사용처별.
+                <CategoryCard
+                  key={categoryFilter.label}
+                  entries={stats.entries}
+                  groupBy={categoryFilter.hasSubcategory ? "place" : "subcategory"}
+                  title={`${categoryFilter.label} ${
+                    categoryFilter.hasSubcategory ? "사용처별" : "소분류별"
+                  } 지출`}
+                />
+              ) : (
+                <CategoryCard
+                  total={stats.summary.expense}
+                  byCategory={stats.byCategory}
+                  entries={stats.entries}
+                />
+              )}
             </>
           )}
           {insights && insights.savings.month === month && (
             <SavingsCard savings={insights.savings} />
           )}
-          {!isTripReport && <AllTimeCard allTime={stats.allTime} />}
+          {!isTripReport && !categoryFilter && <AllTimeCard allTime={stats.allTime} />}
           {hasActivity ? (
             <>
-              {!isTripReport && stats.balanceReady && (
+              {!isTripReport && !categoryFilter && stats.balanceReady && (
                 <BalanceCard
                   daily={stats.daily.filter(
                     (day) => !stats.balanceFrom || day.date >= stats.balanceFrom
@@ -1704,12 +1740,7 @@ export const StatsView = ({
                 />
               )}
               {!isTripReport && <SpendCard daily={stats.daily} />}
-              <PeriodEntriesCard
-                entries={stats.entries}
-                categories={categories}
-                subcategories={subcategories}
-                onEdit={onEdit}
-              />
+              <PeriodEntriesCard entries={stats.entries} onEdit={onEdit} />
               {!isTripReport && stats.monthly.length > 1 && (
                 <MonthlyCard monthly={stats.monthly} />
               )}
@@ -1721,7 +1752,9 @@ export const StatsView = ({
                   <Wallet className="size-5" />
                 </div>
                 <p className="mt-3 text-sm font-medium text-foreground">
-                  이 기간에는 기록이 없어요
+                  {categoryFilter
+                    ? `이 기간에는 ${categoryFilter.label} 내역이 없어요`
+                    : "이 기간에는 기록이 없어요"}
                 </p>
               </div>
             </StatCard>
