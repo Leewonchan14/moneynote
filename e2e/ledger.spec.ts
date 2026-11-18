@@ -1818,6 +1818,78 @@ test.describe("여행", () => {
     await expect(tripRow).toBeVisible();
   });
 
+  test("여행 하나를 고르면 내역·달력·통계가 그 여행만 보여 준다", async ({
+    page,
+    request,
+    token,
+  }) => {
+    const jeju = await createTrip(request, token, "제주 여행", today(), today());
+    const busanDay = `${lastMonth()}-10`;
+    const busan = await createTrip(request, token, "부산 여행", busanDay, busanDay);
+    await addEntry(request, token, {
+      entryDate: today(),
+      amount: 70_000,
+      memo: "제주 지출",
+      tripId: jeju,
+    });
+    await addEntry(request, token, {
+      entryDate: busanDay,
+      amount: 30_000,
+      memo: "부산 지출",
+      tripId: busan,
+    });
+    await addEntry(request, token, {
+      entryDate: today(),
+      amount: 5_000,
+      memo: "일상 지출",
+      tripId: null,
+    });
+
+    await openLedger(page, token);
+    const jejuRow = page.getByRole("button", { name: /제주 지출/ });
+    const busanRow = page.getByRole("button", { name: /부산 지출/ });
+    const dailyRow = page.getByRole("button", { name: /일상 지출/ });
+    const pickTrip = async (name: string) => {
+      await page.getByRole("combobox", { name: "여행별 보기" }).click();
+      await page.getByRole("option", { name: new RegExp(name) }).click();
+    };
+
+    await pickTrip("제주 여행");
+    await expect(page.getByText("여행만 보는 중")).toBeVisible();
+    await expect(jejuRow).toBeVisible();
+    await expect(dailyRow).toHaveCount(0);
+
+    // 여행 제외와는 함께 켜지지 않는다.
+    const exclude = page.getByRole("button", { name: "여행 제외" });
+    await exclude.click();
+    await expect(page.getByText("여행만 보는 중")).toHaveCount(0);
+    await expect(jejuRow).toHaveCount(0);
+    await expect(dailyRow).toBeVisible();
+    await exclude.click();
+
+    await pickTrip("제주 여행");
+    await page.getByRole("tab", { name: "달력" }).click();
+    await expect(jejuRow).toBeVisible();
+    await expect(dailyRow).toHaveCount(0);
+
+    // 통계는 그 여행 리포트로 열리고, 거기서 바꾼 여행을 내역도 따라간다.
+    await openStats(page);
+    const tripChips = page.getByRole("group", { name: "여행 선택" });
+    await expect(tripChips.getByRole("button", { name: "제주 여행" })).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
+    await tripChips.getByRole("button", { name: "부산 여행" }).click();
+    await page.getByRole("tab", { name: "내역" }).click();
+    // 부산 여행이 지난달이라 그 달로 옮겨 간다.
+    await expect(busanRow).toBeVisible();
+    await expect(jejuRow).toHaveCount(0);
+
+    await page.getByRole("button", { name: "전체 보기" }).click();
+    await expect(page.getByText("여행만 보는 중")).toHaveCount(0);
+    await expect(busanRow).toBeVisible();
+  });
+
   test("지워도 내역과 분류는 남는다", async ({ page, request, token }) => {
     const categoryId = await getCategories(request, token);
     const tripId = await createTrip(request, token, "지울 여행", today(), today());
