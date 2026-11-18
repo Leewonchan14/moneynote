@@ -89,6 +89,9 @@ interface Props {
   /** 여행 내역을 뺀 리포트. 내역·달력 탭과 같은 값을 함께 쓴다. */
   excludeTrips: boolean;
   onExcludeTripsChange: (value: boolean) => void;
+  /** 내역·달력 탭에서 고른 여행. 여행 리포트가 이 여행을 보여 주고, 여기서 바꾸면 그쪽도 바뀐다. */
+  tripId: number | null;
+  onTripChange: (tripId: number | null) => void;
 }
 
 const RANGES = [
@@ -1343,9 +1346,12 @@ export const StatsView = ({
   onWeekChange,
   excludeTrips,
   onExcludeTripsChange,
+  tripId,
+  onTripChange,
 }: Props) => {
   const token = useAuthStore((s) => s.token);
-  const [range, setRange] = useState<RangeId>(initialPeriod);
+  // 내역·달력에서 여행을 골라 두었으면 그 여행 리포트로 연다.
+  const [range, setRange] = useState<RangeId>(tripId != null ? "trip" : initialPeriod);
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
   const [customError, setCustomError] = useState<string | null>(null);
@@ -1356,9 +1362,8 @@ export const StatsView = ({
       : range === "week"
         ? weekRange(weekStart, todayKst())
         : appliedRange;
-  const [selectedTripId, setSelectedTripId] = useState<number | null>(null);
   const isTripReport = range === "trip";
-  const activeTrip = trips.find((trip) => trip.id === selectedTripId) ?? trips[0] ?? null;
+  const activeTrip = trips.find((trip) => trip.id === tripId) ?? trips[0] ?? null;
   const shouldExclude = !isTripReport && excludeTrips;
   const statsScope = shouldExclude ? "without-trips" : undefined;
   const thisMonth = currentMonthKst();
@@ -1367,6 +1372,9 @@ export const StatsView = ({
   const selectRange = (id: RangeId) => {
     setRange(id);
     setCustomError(null);
+    // 여행 리포트에서 고른 여행은 내역·달력 탭과 함께 쓴다.
+    if (id === "trip") onTripChange(activeTrip?.id ?? null);
+    else if (range === "trip") onTripChange(null);
 
     if (id === "month" || id === "week" || id === "trip") return;
 
@@ -1484,7 +1492,7 @@ export const StatsView = ({
                     key={trip.id}
                     type="button"
                     aria-pressed={active}
-                    onClick={() => setSelectedTripId(trip.id)}
+                    onClick={() => onTripChange(trip.id)}
                     className={categoryChipClass(active)}
                   >
                     {trip.name}

@@ -1,11 +1,26 @@
 import type { LedgerMonthPayload } from "@/lib/db/ledger";
 
 /**
- * 여행에 묶인 내역을 뺀 달 데이터. 합계·분류별 지출·날짜별 합계·예산 사용량을 남은
+ * 여행에 묶인 내역을 어떻게 볼지. 내역·달력 탭이 함께 쓴다.
+ * - all: 전체
+ * - exclude: 여행에 묶인 내역을 빼고
+ * - 숫자: 그 여행(id)에 묶인 내역만
+ */
+export type TripScope = "all" | "exclude" | number;
+
+export const matchesTripScope = (tripId: number | null, scope: TripScope) =>
+  scope === "all" || (scope === "exclude" ? tripId == null : tripId === scope);
+
+/**
+ * 여행 범위에 맞는 내역만 남긴 달 데이터. 합계·분류별 지출·날짜별 합계·예산 사용량을 남은
  * 내역으로 다시 계산하고, 잔액·예산 설정·여행 목록처럼 내역 필터와 무관한 값은 그대로 둔다.
  */
-export const withoutTrips = (ledger: LedgerMonthPayload): LedgerMonthPayload => {
-  const entries = ledger.entries.filter((entry) => entry.tripId == null);
+export const scopeLedgerToTrips = (
+  ledger: LedgerMonthPayload,
+  scope: TripScope
+): LedgerMonthPayload => {
+  if (scope === "all") return ledger;
+  const entries = ledger.entries.filter((entry) => matchesTripScope(entry.tripId, scope));
   if (entries.length === ledger.entries.length) return ledger;
 
   let income = 0;
