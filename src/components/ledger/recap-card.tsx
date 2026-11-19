@@ -40,21 +40,26 @@ const monthName = (month: string): string => {
 };
 
 /** 기간이 속한 달의 예산. 지난달이면 결과를, 이번 달이면 속도를 알려 준다. */
-const budgetText = (budget: NonNullable<LedgerRecap["budget"]>): string | null => {
+const budgetText = (
+  budget: NonNullable<LedgerRecap["budget"]>,
+  /** 분류를 골랐으면 그 분류 이름. "식비 예산"처럼 쓴다. */
+  categoryName: string | null
+): string | null => {
   const { pace, total, spent, month } = budget;
+  const name = categoryName ? `${categoryName} 예산` : "예산";
   if (pace.state !== "current") {
     if (month >= currentMonthKst()) return null;
     return spent > total
-      ? `${monthName(month)} 예산을 ${formatWon(spent - total)} 넘었어요`
-      : `${monthName(month)} 예산 안에서 썼어요 · ${formatWon(total - spent)} 남김`;
+      ? `${monthName(month)} ${name}을 ${formatWon(spent - total)} 넘었어요`
+      : `${monthName(month)} ${name} 안에서 썼어요 · ${formatWon(total - spent)} 남김`;
   }
   if (pace.status === "over") {
-    return `이번 달 예산을 ${formatWon(spent - total)} 넘었어요`;
+    return `이번 달 ${name}을 ${formatWon(spent - total)} 넘었어요`;
   }
   if (pace.status === "risk") {
-    return `이 속도면 이번 달 예산을 ${formatWon(pace.projectedOver)} 넘어요`;
+    return `이 속도면 이번 달 ${name}을 ${formatWon(pace.projectedOver)} 넘어요`;
   }
-  return `이번 달은 예산 안이에요 · 월말 예상 ${formatWon(pace.projected)}`;
+  return `이번 달은 ${name} 안이에요 · 월말 예상 ${formatWon(pace.projected)}`;
 };
 
 const isOverBudget = (budget: LedgerRecap["budget"]): boolean => {
@@ -63,19 +68,33 @@ const isOverBudget = (budget: LedgerRecap["budget"]): boolean => {
   return budget.month < currentMonthKst() && budget.spent > budget.total;
 };
 
+/** 리캡을 좁힐 분류. 탭 아래 분류·소분류 필터를 그대로 따른다. */
+export type RecapCategory = {
+  categoryId: number;
+  /** 소분류 id, "none"(소분류 없음), "all"(분류 전체) */
+  subcategory: number | "none" | "all";
+  /** "식비", "식비 · 혼밥"처럼 제목에 붙일 이름 */
+  label: string;
+  /** 예산 문구에 쓸 분류 이름 */
+  categoryName: string;
+};
+
 /**
  * 내역 화면에서 고른 기간의 리캡. 달로 보면 월별, 주로 보면 주별 리캡이 된다.
  * periodKey는 달이면 YYYY-MM, 주면 그 주 월요일이다.
+ * category를 주면 그 분류(소분류)만 돌아본다.
  */
 export const RecapCard = ({
   period,
   periodKey,
   excludeTrips = false,
+  category = null,
 }: {
   period: LedgerRecapPeriod;
   periodKey: string;
   /** 여행에 묶인 지출을 빼고 본다. */
   excludeTrips?: boolean;
+  category?: RecapCategory | null;
 }) => {
   const token = useAuthStore((s) => s.token);
   const [receiptOpen, setReceiptOpen] = useState(false);
@@ -83,13 +102,24 @@ export const RecapCard = ({
     queryKey: ledgerKeys.recap(
       period,
       periodKey,
-      excludeTrips ? "without-trips" : undefined
+      [
+        excludeTrips ? "without-trips" : "all-entries",
+        category ? `${category.categoryId}:${category.subcategory}` : "all-categories",
+      ].join("/")
     ),
     queryFn: async () => {
-      const param = period === "week" ? "week" : "month";
+      const params = new URLSearchParams({ period });
+      params.set(period === "week" ? "week" : "month", periodKey);
+      if (excludeTrips) params.set("excludeTrips", "1");
+      if (category) {
+        params.set("categoryId", String(category.categoryId));
+        if (category.subcategory !== "all") {
+          params.set("subcategory", String(category.subcategory));
+        }
+      }
       const { recap } = await ledgerRequest<{ recap: LedgerRecap }>(
         token,
-        `/api/ledger/recap?period=${period}&${param}=${periodKey}${excludeTrips ? "&excludeTrips=1" : ""}`
+        `/api/ledger/recap?${params}`
       );
       return recap;
     },
@@ -103,15 +133,18 @@ export const RecapCard = ({
   // 단위를 바꾼 직후에는 다른 단위의 리캡을 잠깐이라도 보여 주지 않는다.
   if (recap.period !== period) return null;
 
-  const title = RECAP_TITLE[recap.period];
-  const budgetLine = recap.budget && budgetText(recap.budget);
+  const title = category
+    ? `${RECAP_TITLE[recap.period]} · ${category.label}`
+    : RECAP_TITLE[recap.period];
+  const budgetLine =
+    recap.budget && budgetText(recap.budget, category?.categoryName ?? null);
   const isOverPace = isOverBudget(recap.budget);
 
   return (
     <section
       aria-label={title}
       aria-busy={isPlaceholderData}
-      className={cn("mb-3 transition-opacity", isPlaceholderData && "opacity-60")}
+      className={cn("mt-3 transition-opacity", isPlaceholderData && "opacity-60")}
     >
       <Card>
         <CardContent className="grid gap-3 px-4 md:grid-cols-2 md:gap-6">

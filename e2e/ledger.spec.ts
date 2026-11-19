@@ -452,11 +452,13 @@ test.describe("내역 탭", () => {
     await expect(page.getByRole("button", { name: /저녁/ })).toBeVisible();
     await expect(page.getByRole("button", { name: /커피/ })).toHaveCount(0);
     await expect(page.getByRole("button", { name: /충전/ })).toHaveCount(0);
-    await expect(page.getByText(/식비 2건 · 지출 17,000원/)).toBeVisible();
+    await expect(page.getByTestId("summary-expense")).toContainText("식비 2건");
+    await expect(page.getByTestId("summary-expense")).toContainText("17,000원");
 
     await page.getByRole("button", { name: "이전 달" }).click();
     await expect(page.getByRole("button", { name: /지난달 밥/ })).toBeVisible();
-    await expect(page.getByText(/식비 1건 · 지출 7,000원/)).toBeVisible();
+    await expect(page.getByTestId("summary-expense")).toContainText("식비 1건");
+    await expect(page.getByTestId("summary-expense")).toContainText("7,000원");
 
     await chips.getByRole("button", { name: "카페", exact: true }).click();
     await expect(page.getByText(/에는 카페 내역이 없어요/)).toBeVisible();
@@ -470,6 +472,122 @@ test.describe("내역 탭", () => {
     await page.getByRole("button", { name: "다음 달" }).click();
     await expect(page.getByRole("button", { name: /충전/ })).toBeVisible();
     await expect(page.getByRole("button", { name: /커피/ })).toBeVisible();
+  });
+
+  test("분류를 고르면 위쪽 지출 카드와 리캡도 그 분류만 센다", async ({
+    page,
+    request,
+    token,
+  }) => {
+    const categoryId = await getCategories(request, token);
+    await addEntry(request, token, {
+      entryDate: today(),
+      amount: 6_000,
+      memo: "버거",
+      categoryId: categoryId("식비"),
+    });
+    await addEntry(request, token, {
+      entryDate: today(),
+      amount: 4_000,
+      memo: "김밥",
+      categoryId: categoryId("식비"),
+    });
+    await addEntry(request, token, {
+      entryDate: today(),
+      amount: 5_000,
+      memo: "커피",
+      categoryId: categoryId("카페"),
+    });
+    const budget = await request.put("/api/ledger/budget", {
+      headers: authHeaders(token),
+      data: {
+        month: thisMonth(),
+        totalBudget: 100_000,
+        categories: [{ categoryId: categoryId("식비"), amount: 30_000 }],
+      },
+    });
+    expect(budget.ok()).toBe(true);
+
+    await openLedger(page, token);
+    const expenseCard = () => page.getByTestId("summary-expense");
+    await expect(expenseCard()).toContainText("지출");
+    await expect(expenseCard()).toContainText("15,000원");
+
+    await page
+      .getByRole("group", { name: "분류 필터" })
+      .getByRole("button", { name: "식비", exact: true })
+      .click();
+    await expect(expenseCard()).toContainText("식비 지출");
+    await expect(expenseCard()).toContainText("10,000원");
+    await expect(expenseCard()).toContainText("식비 2건");
+    const recap = page.getByRole("region", { name: "월별 리캡 · 식비" });
+    await expect(recap).toContainText("10,000원");
+    await expect(recap).not.toContainText("커피");
+    // 예산 카드는 식비 예산을 보여 준다.
+    await expect(page.getByTestId("summary-budget")).toContainText("식비 예산");
+    await expect(page.getByTestId("summary-budget")).toContainText("20,000원 남음");
+
+    // 리캡은 요약 카드 아래에 온다.
+    const cardBox = await expenseCard().boundingBox();
+    const recapBox = await recap.boundingBox();
+    expect(recapBox!.y).toBeGreaterThan(cardBox!.y + cardBox!.height);
+
+    // 달력 탭에서도 이번 달 식비 합계를 본다.
+    await openMainTab(page, "달력");
+    await expect(expenseCard()).toContainText("식비 지출");
+    await expect(expenseCard()).toContainText("10,000원");
+    await expect(recap).toContainText("10,000원");
+  });
+
+  test("큰 지출과 소분류별 지출을 누르면 언제 썼는지 날짜별 내역이 펼쳐진다", async ({
+    page,
+    request,
+    token,
+  }) => {
+    const categoryId = await getCategories(request, token);
+    const soloId = await createItem(request, token, "/api/ledger/subcategories", {
+      categoryId: categoryId("식비"),
+      name: "혼밥",
+    });
+    const firstDay = `${thisMonth()}-01`;
+    for (const [entryDate, amount] of [
+      [firstDay, 4_000],
+      [today(), 6_000],
+    ] as const) {
+      await addEntry(request, token, {
+        entryDate,
+        amount,
+        memo: "버거집",
+        categoryId: categoryId("식비"),
+        subcategoryId: soloId,
+      });
+    }
+
+    await openLedger(page, token);
+    await page
+      .getByRole("group", { name: "분류 필터" })
+      .getByRole("button", { name: "식비", exact: true })
+      .click();
+
+    const top = page.getByRole("list", { name: "큰 지출 목록" });
+    await top.getByText("버거집").click();
+    const dates = page.getByRole("list", { name: "버거집 내역" });
+    await expect(dates.getByRole("listitem")).toHaveCount(2);
+    await expect(dates.getByRole("listitem").first()).toContainText(
+      kst(today()).format("M.D")
+    );
+    await expect(dates.getByRole("listitem").last()).toContainText(
+      kst(firstDay).format("M.D")
+    );
+    // 누르면 그 내역을 고칠 수 있다.
+    await dates.getByRole("button").first().click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await page.keyboard.press("Escape");
+
+    await page.getByRole("button", { name: /^혼밥 [\d,]+원/ }).click();
+    const subDates = page.getByRole("list", { name: "내역", exact: true });
+    await expect(subDates.getByRole("listitem")).toHaveCount(2);
+    await expect(subDates).toContainText(kst(firstDay).format("M.D"));
   });
 
   test("분류 필터에 이체는 나오지 않는다", async ({ page, request, token }) => {
@@ -495,7 +613,8 @@ test.describe("내역 탭", () => {
       .getByRole("button", { name: "식비", exact: true })
       .click();
     await expect(page.getByRole("button", { name: /비상금/ })).toHaveCount(0);
-    await expect(page.getByText(/식비 1건 · 지출 9,000원/)).toBeVisible();
+    await expect(page.getByTestId("summary-expense")).toContainText("식비 1건");
+    await expect(page.getByTestId("summary-expense")).toContainText("9,000원");
   });
 
   test("행 구분선은 곧은 선이고 마지막 행에는 없다", async ({ page, request, token }) => {
