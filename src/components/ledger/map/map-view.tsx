@@ -12,6 +12,7 @@ import { parseAsString, useQueryState } from "nuqs";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { DayRouteButton } from "@/components/ledger/day-route/day-route-button";
 import { formatPeriod, MapPeriodFilter } from "@/components/ledger/map/map-period-filter";
 import { PlacePhotoCarousel } from "@/components/ledger/place-photos";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -378,6 +379,11 @@ export const LedgerMapView = ({
             : "내역에 남긴 네이버 지도 링크로 다녀온 곳을 모아 봐요."}
         </p>
       </div>
+
+      {/* 하루만 골랐으면 그날 다닌 순서대로 잇는 동선을 볼 수 있다. */}
+      {data?.range === "custom" && data.from && data.from === data.to && (
+        <DayRouteButton date={data.from} className="self-start" />
+      )}
 
       {data && data.unresolved > 0 && (
         <div

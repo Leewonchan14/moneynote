@@ -9,6 +9,7 @@ import {
   placesByDate,
 } from "@/components/ledger/calendar-photos";
 import { CATEGORY_COLOR_HEX } from "@/components/ledger/category-icon";
+import { DayRouteButton } from "@/components/ledger/day-route/day-route-button";
 import type { LedgerEntryView } from "@/components/ledger/entry-list";
 import { LedgerEntryList } from "@/components/ledger/entry-list";
 import type { CityDay, CityTrip } from "@/components/ledger/three/spend-city";
@@ -239,10 +240,14 @@ export const CalendarView = ({
       </div>
 
       <section className="rounded-xl bg-card p-2 ring-1 ring-foreground/10 md:p-3">
-        <div className="flex items-baseline justify-between gap-2 px-2 pt-1 pb-2">
-          <h3 className="text-[13px] font-medium text-foreground">
-            {formatDayKo(activeDay)}
-          </h3>
+        <div className="flex items-center justify-between gap-2 px-2 pt-1 pb-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <h3 className="text-[13px] font-medium text-foreground">
+              {formatDayKo(activeDay)}
+            </h3>
+            {/* 그날 지도에 찍힌 지출이 두 건 이상이면 동선 보기 버튼이 나온다. */}
+            <DayRouteButton date={activeDay} />
+          </div>
           <span className="text-[11px] text-muted-foreground tabular-nums">
             지출 {formatWon(activeTotals.expense)}
             {activeTotals.income > 0 && ` · 입금 ${formatWon(activeTotals.income)}`}
