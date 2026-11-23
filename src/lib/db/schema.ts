@@ -145,6 +145,10 @@ export const ledgerEntries = pgTable(
     }),
     memo: text("memo").notNull().default(""),
     note: text("note").notNull().default(""),
+    mapUrl: text("map_url").notNull().default(""), // 장소 지도 링크 (네이버·카카오·구글 지도 등)
+    mapPlaceName: text("map_place_name").notNull().default(""), // 네이버 지도 링크에서 읽은 장소 이름
+    // 네이버 지도 링크에서 읽은 장소 사진 주소들 (앞의 것이 대표 사진)
+    mapImageUrls: jsonb("map_image_urls").$type<string[]>().notNull().default([]),
     tags: text("tags").notNull().default(""),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),

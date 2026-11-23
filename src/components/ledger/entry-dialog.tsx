@@ -1,12 +1,14 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ExternalLink } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
 import { CategoryIcon } from "@/components/ledger/category-icon";
 import type { LedgerEntryView } from "@/components/ledger/entry-list";
-import { Button } from "@/components/ui/button";
+import { MapPlaceCard } from "@/components/ledger/place-photos";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import {
   Dialog,
@@ -22,6 +24,12 @@ import type { LedgerEntryKind, LedgerMonthPayload } from "@/lib/db/ledger";
 import type { LedgerSuggestion, LedgerSuggestions } from "@/lib/db/ledger-extras";
 import { ledgerKeys, ledgerRequest } from "@/lib/ledger/client";
 import { formatWon, nowTimeKst, todayKst } from "@/lib/ledger/format";
+import {
+  extractMapUrl,
+  isHttpUrl,
+  isNaverMapUrl,
+  MAX_MAP_URL_LENGTH,
+} from "@/lib/ledger/map-url";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -112,6 +120,13 @@ const EntryForm = ({ ledger, defaultDate, entry, onOpenChange }: Omit<Props, "op
   );
   const [memo, setMemo] = useState(entry?.memo ?? "");
   const [note, setNote] = useState(entry?.note ?? "");
+  const [mapUrl, setMapUrl] = useState(entry?.mapUrl ?? "");
+  // 저장된 링크 그대로일 때만 저장해 둔 장소 사진을 보여 준다.
+  const savedPlace =
+    entry != null &&
+    entry.mapUrl !== "" &&
+    extractMapUrl(mapUrl) === entry.mapUrl &&
+    Boolean(entry.mapImageUrls.length || entry.mapPlaceName);
   const [tags, setTags] = useState(entry?.tags ?? "");
   const [confirmDelete, setConfirmDelete] = useState(false);
   // undefined면 아직 고르지 않은 상태라 날짜로 여행을 추천한다.
@@ -198,6 +213,8 @@ const EntryForm = ({ ledger, defaultDate, entry, onOpenChange }: Omit<Props, "op
         savingsId,
         memo: memo.trim(),
         note: note.trim(),
+        // 지도 링크는 지출에만 둔다.
+        mapUrl: kind === "expense" ? extractMapUrl(mapUrl) : "",
         tags: tags.trim(),
         tripId: kind === "expense" ? selectedTripId : (entry?.tripId ?? null),
       };
@@ -507,6 +524,64 @@ const EntryForm = ({ ledger, defaultDate, entry, onOpenChange }: Omit<Props, "op
                 );
               })}
             </div>
+          </div>
+        )}
+
+        {kind === "expense" && (
+          <div>
+            <label
+              className="text-[12px] font-medium text-muted-foreground"
+              htmlFor="ledger-map-url"
+            >
+              지도 링크
+            </label>
+            <div className="mt-1 flex gap-2">
+              <Input
+                id="ledger-map-url"
+                inputMode="url"
+                value={mapUrl}
+                onChange={(event) => setMapUrl(event.target.value)}
+                // 지도 앱의 공유 문구를 통째로 붙여도 링크만 남긴다.
+                onBlur={() => setMapUrl(extractMapUrl(mapUrl))}
+                onPaste={(event) => {
+                  const pasted = event.clipboardData.getData("text");
+                  const url = extractMapUrl(pasted);
+                  if (url === pasted.trim()) return;
+                  event.preventDefault();
+                  setMapUrl(url);
+                }}
+                placeholder="네이버·카카오·구글 지도 공유 링크"
+                maxLength={MAX_MAP_URL_LENGTH}
+                autoComplete="off"
+                className="min-w-0 flex-1"
+              />
+              {isHttpUrl(mapUrl) && (
+                <a
+                  href={extractMapUrl(mapUrl)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="지도 열기"
+                  className={buttonVariants({ variant: "outline", size: "icon" })}
+                >
+                  <ExternalLink />
+                </a>
+              )}
+            </div>
+            {entry && savedPlace ? (
+              <MapPlaceCard
+                url={entry.mapUrl}
+                placeName={entry.mapPlaceName}
+                imageUrls={entry.mapImageUrls}
+              />
+            ) : (
+              isNaverMapUrl(extractMapUrl(mapUrl)) && (
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  {entry?.mapUrl === extractMapUrl(mapUrl)
+                    ? "네이버 지도에서 장소 사진을 찾지 못했어요. 다시 저장하면 한 번 더 불러와요."
+                    : "저장하면 네이버 지도의 장소 사진을 함께 보여 줘요."}
+                </p>
+              )
+            )}
           </div>
         )}
 

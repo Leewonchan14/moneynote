@@ -24,6 +24,8 @@
     "date-fns": "^4.4.0",
     "dayjs": "^1.11.21",
     "drizzle-orm": "^0.45.2",
+    "embla-carousel-react": "^8.6.0",
+    "embla-carousel-wheel-gestures": "^8.1.0",
     "lucide-react": "^1.24.0",
     "next": "16.2.10",
     "papaparse": "^5.5.4",

@@ -15,6 +15,13 @@
       "when": 1794157097503,
       "tag": "0001_green_nebula",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1795395765380,
+      "tag": "0002_entry_map_link",
+      "breakpoints": true
     }
   ]
 }

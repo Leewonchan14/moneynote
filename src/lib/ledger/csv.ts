@@ -24,6 +24,7 @@ export const ledgerEntriesToCsv = (entries: LedgerEntryView[]): string =>
       메모: entry.note,
       태그: entry.tags,
       여행: entry.tripName ?? "",
+      지도: entry.mapUrl,
     })),
     { escapeFormulae: true }
   )}`;

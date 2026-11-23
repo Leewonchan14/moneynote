@@ -31,6 +31,7 @@ import {
 } from "@/components/ledger/category-icon";
 import { SavingsCard, UnusualSpendCard } from "@/components/ledger/insight-cards";
 import { MonthPicker, WeekPicker } from "@/components/ledger/period-picker";
+import { PlacePhotoStrip } from "@/components/ledger/place-photos";
 import {
   EntryDateList,
   groupTopExpenses,
@@ -938,11 +939,15 @@ const PeriodEntriesCard = ({
           {sortedRows.slice(0, visibleCount).map((entry) => {
             const isIncome = entry.kind === "income";
             return (
-              <li key={entry.id}>
+              // 줄에 마우스를 올리면 아래 장소 사진까지 함께 칠한다.
+              <li
+                key={entry.id}
+                className="transition-colors [@media(hover:hover)]:has-[>button:hover]:bg-muted/60"
+              >
                 <button
                   type="button"
                   onClick={() => onEdit(entry)}
-                  className="flex w-full items-center gap-2 py-2 text-left hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                  className="flex w-full items-center gap-2 py-2 text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
                 >
                   <EntryIcon entry={entry} size={20} />
                   <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">
@@ -960,6 +965,17 @@ const PeriodEntriesCard = ({
                     {formatWon(entry.amount)}
                   </span>
                 </button>
+                {entry.mapUrl && (
+                  // pl-7: 아이콘 + 간격
+                  <PlacePhotoStrip
+                    title={entry.memo.trim() || (isIncome ? "입금" : "지출")}
+                    mapUrl={entry.mapUrl}
+                    placeName={entry.mapPlaceName}
+                    imageUrls={entry.mapImageUrls}
+                    size="sm"
+                    className="pb-2 pl-7"
+                  />
+                )}
               </li>
             );
           })}

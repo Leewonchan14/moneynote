@@ -43,8 +43,14 @@ export interface E2eServer {
   stop: () => Promise<void>;
 }
 
-/** dataDir을 쓰는 서버를 띄운다. 끌 때는 자기가 띄운 프로세스만 종료한다. */
-export const startServer = async (dataDir: string): Promise<E2eServer> => {
+/**
+ * dataDir을 쓰는 서버를 띄운다. 끌 때는 자기가 띄운 프로세스만 종료한다.
+ * env는 테스트가 가짜 외부 서버(예: NAVER_PLACE_ORIGIN)를 가리킬 때 쓴다.
+ */
+export const startServer = async (
+  dataDir: string,
+  env: Record<string, string> = {}
+): Promise<E2eServer> => {
   const port = await freePort();
   const url = `http://127.0.0.1:${port}`;
   let output = "";
@@ -58,6 +64,7 @@ export const startServer = async (dataDir: string): Promise<E2eServer> => {
       PORT: String(port),
       MONEYNOTE_DATA_DIR: dataDir,
       SITE_PASSWORD: E2E_PASSWORD,
+      ...env,
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
