@@ -187,6 +187,14 @@ test("네이버 지도 링크가 있는 지출을 장소별로 묶어 지도와 
   await expect(
     detail.getByRole("link", { name: "네이버 지도에서 열기" })
   ).toHaveAttribute("href", placeUrl("2001"));
+  // 고른 장소는 주소에 남아, 새로고침해도 지도 탭에서 같은 장소가 열린다.
+  await expect(page).toHaveURL(/[?&]place=2001(&|$)/);
+  await page.reload();
+  await expect(page.getByRole("tab", { name: "지도" })).toHaveAttribute(
+    "aria-selected",
+    "true"
+  );
+  await expect(detail).toBeVisible();
 
   // 넓은 화면에서는 목록을 내려도 고른 장소가 위에 붙어 있다.
   if (test.info().project.name === "desktop") {
@@ -203,6 +211,7 @@ test("네이버 지도 링크가 있는 지출을 장소별로 묶어 지도와 
   // 고른 장소는 닫기 버튼, 같은 장소 다시 누르기, Esc로 선택을 푼다.
   await detail.getByRole("button", { name: "선택 해제" }).click();
   await expect(detail).toBeHidden();
+  await expect(page).not.toHaveURL(/place=/);
   await items.first().click();
   await expect(detail).toBeVisible();
   await items.first().click();
@@ -211,6 +220,20 @@ test("네이버 지도 링크가 있는 지출을 장소별로 묶어 지도와 
   await items.first().click();
   await expect(detail).toBeVisible();
   await page.keyboard.press("Escape");
+  await expect(detail).toBeHidden();
+  await expect(page).not.toHaveURL(/place=/);
+
+  // 기간을 바꾸거나 다른 탭으로 가면 고른 장소를 주소에서도 지운다.
+  await items.first().click();
+  await expect(page).toHaveURL(/place=2001/);
+  await periodNav(page).getByRole("button", { name: "이번 달" }).click();
+  await expect(detail).toBeHidden();
+  await expect(page).not.toHaveURL(/place=/);
+  await periodNav(page).getByRole("button", { name: "전체" }).click();
+  await items.first().click();
+  await page.getByRole("tab", { name: "내역" }).click();
+  await expect(page).not.toHaveURL(/place=/);
+  await page.getByRole("tab", { name: "지도" }).click();
   await expect(detail).toBeHidden();
 
   // 올해만 보면 작년에 간 곳은 빠진다.
@@ -415,4 +438,45 @@ test("탭 위 분류·소분류 필터로 그 분류 지출로 간 곳만 본다
   await page.getByRole("tab", { name: "내역" }).click();
   await page.getByRole("tab", { name: "지도" }).click();
   await expect(items).toHaveCount(1);
+});
+
+test("간 날이 많으면 장소 카드 안의 간 날 목록만 스크롤한다", async ({
+  page,
+  request,
+  token,
+}) => {
+  for (let day = 1; day <= 16; day += 1) {
+    await addPlace(request, token, {
+      memo: `파스타 ${day}`,
+      amount: 10_000 + day,
+      mapUrl: placeUrl("2001"),
+      entryDate: daysAgo(day),
+    });
+  }
+
+  await openMap(page, token);
+  await placeList(page).getByRole("button").first().click();
+  const detail = page.getByRole("region", { name: "성수 파스타집 방문 기록" });
+  await expect(detail.getByText("16번 방문")).toBeVisible();
+  // 흰 바탕 사진도 카드 본문과 구분되게 사진 아래에 경계선이 있다.
+  const photoFrame = detail.getByRole("region", { name: /사진 \d+장/ }).locator("..");
+  await expect(photoFrame).toHaveCSS("border-bottom-style", "solid");
+  const days = detail.getByRole("list", { name: "간 날" });
+  const { scrollHeight, clientHeight } = await days.evaluate((el) => ({
+    scrollHeight: el.scrollHeight,
+    clientHeight: el.clientHeight,
+  }));
+  expect(scrollHeight).toBeGreaterThan(clientHeight);
+  // 목록을 끝까지 내리면 가장 오래된 날이 보이고, 지도 링크는 카드 안에 그대로 있다.
+  await days.evaluate((el) => el.scrollTo({ top: el.scrollHeight }));
+  await expect
+    .poll(async () => {
+      const box = await days.boundingBox();
+      const last = await days.getByText("파스타 16").boundingBox();
+      return Boolean(
+        box && last && last.y >= box.y && last.y + last.height <= box.y + box.height + 1
+      );
+    })
+    .toBe(true);
+  await expect(detail.getByRole("link", { name: "네이버 지도에서 열기" })).toBeVisible();
 });
