@@ -31,6 +31,10 @@ import {
   type SubcategoryFilter,
 } from "@/components/ledger/category-chips";
 import { CategoryIcon } from "@/components/ledger/category-icon";
+import {
+  DayRouteButton,
+  useDayRouteDays,
+} from "@/components/ledger/day-route/day-route-button";
 import { EntryDialog } from "@/components/ledger/entry-dialog";
 import type { LedgerEntryView } from "@/components/ledger/entry-list";
 import { LedgerEntryList } from "@/components/ledger/entry-list";
@@ -644,6 +648,13 @@ export const LedgerPage = () => {
     return [...groups.values()].sort((a, b) => b.date.localeCompare(a.date));
   }, [listEntries]);
 
+  // 내역에 나온 날 중 동선을 볼 수 있는 날. 날마다 묻지 않고 보이는 기간을 한 번에 묻는다.
+  const routeDaysQuery = useDayRouteDays(dayGroups.at(-1)?.date, dayGroups[0]?.date);
+  const routeDates = useMemo(
+    () => new Set(routeDaysQuery.data?.days.map((day) => day.date)),
+    [routeDaysQuery.data]
+  );
+
   const openAdd = () => {
     setEditingEntry(null);
     setEntryOpen(true);
@@ -1166,10 +1177,16 @@ export const LedgerPage = () => {
                         key={group.date}
                         className="rounded-xl bg-card p-2 ring-1 ring-foreground/10 md:p-3"
                       >
-                        <div className="flex items-baseline justify-between gap-2 px-2 pt-1 pb-1.5">
-                          <h3 className="text-[13px] font-medium text-foreground">
-                            {formatDayKo(group.date)}
-                          </h3>
+                        <div className="flex items-center justify-between gap-2 px-2 pt-1 pb-1.5">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <h3 className="text-[13px] font-medium text-foreground">
+                              {formatDayKo(group.date)}
+                            </h3>
+                            {/* 그날 지도에 찍힌 지출이 두 건 이상이면 동선을 볼 수 있다. */}
+                            {routeDates.has(group.date) && (
+                              <DayRouteButton date={group.date} known />
+                            )}
+                          </div>
                           <span className="text-[11px] text-muted-foreground tabular-nums">
                             지출 {formatWon(group.expense)}
                             {group.income > 0 && ` · 입금 ${formatWon(group.income)}`}

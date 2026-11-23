@@ -136,6 +136,34 @@ export const routeDistanceKm = (stops: { lat: number; lng: number }[]): number =
     0
   );
 
+/** 동선을 볼 수 있는 하루의 요약. 내역·통계 탭에서 버튼 자리와 "많이 다닌 날"을 정한다. */
+export type DayRouteDay = {
+  date: string;
+  /** 정거장(묶은 뒤 곳) 수 */
+  places: number;
+  /** 좌표가 있는 지출 건수 */
+  located: number;
+  /** 직선 이동 거리(km) */
+  distanceKm: number;
+  /** 정거장에서 쓴 돈 */
+  spent: number;
+};
+
+export const summarizeDayRoute = (route: DayRoutePayload): DayRouteDay => ({
+  date: route.date,
+  places: route.stops.length,
+  located: route.located,
+  distanceKm: routeDistanceKm(route.stops),
+  spent: route.stops.reduce((sum, stop) => sum + stop.amount, 0),
+});
+
+/** 많이 다닌 날 순서: 곳이 많은 날, 같으면 멀리 다닌 날, 같으면 최근 날 */
+export const rankDayRouteDays = (days: DayRouteDay[]): DayRouteDay[] =>
+  [...days].sort(
+    (a, b) =>
+      b.places - a.places || b.distanceKm - a.distanceKm || b.date.localeCompare(a.date)
+  );
+
 /** 1 km 아래는 m(10 m 단위), 10 km 아래는 소수 한 자리, 그 위는 정수 km */
 export const formatDistance = (km: number): string => {
   if (km < 1) return `${Math.max(10, Math.round((km * 1000) / 10) * 10)}m`;
