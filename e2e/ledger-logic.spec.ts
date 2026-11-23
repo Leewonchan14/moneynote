@@ -158,16 +158,16 @@ test.describe("로그인 제한 계산", () => {
     expect(getLoginBlockSeconds(fails("a", 1, 2, 3, 4), "a", now)).toBe(0);
   });
 
-  test("15분 안에 5번이면 마지막 실패부터 15분 막는다", () => {
-    expect(getLoginBlockSeconds(fails("a", 1, 2, 3, 4, 5), "a", now)).toBe(14 * 60);
+  test("5분 안에 5번이면 마지막 실패부터 5분 막는다", () => {
+    expect(getLoginBlockSeconds(fails("a", 1, 1.5, 2, 3, 4), "a", now)).toBe(4 * 60);
   });
 
   test("차단 시간이 지나면 다시 시도할 수 있다", () => {
-    expect(getLoginBlockSeconds(fails("a", 16, 17, 18, 19, 20), "a", now)).toBe(0);
+    expect(getLoginBlockSeconds(fails("a", 6, 7, 8, 9, 9.5), "a", now)).toBe(0);
   });
 
-  test("15분에 걸쳐 흩어진 실패는 막지 않는다", () => {
-    expect(getLoginBlockSeconds(fails("a", 1, 6, 11, 16, 21), "a", now)).toBe(0);
+  test("5분에 걸쳐 흩어진 실패는 막지 않는다", () => {
+    expect(getLoginBlockSeconds(fails("a", 1, 2.5, 4, 5.5, 7), "a", now)).toBe(0);
   });
 
   test("다른 IP의 실패는 IP 한도에 세지 않지만 전체 한도에는 센다", () => {
@@ -184,11 +184,11 @@ test.describe("로그인 제한 계산", () => {
   });
 
   test("동시 요청으로 한도를 넘었는지 판단한다", () => {
-    expect(exceedsLoginLimit(fails("a", 1, 2, 3, 4, 5), "a", now)).toBe(false);
-    expect(exceedsLoginLimit(fails("a", 1, 2, 3, 4, 5, 6), "a", now)).toBe(true);
+    expect(exceedsLoginLimit(fails("a", 0.5, 1, 1.5, 2, 2.5), "a", now)).toBe(false);
+    expect(exceedsLoginLimit(fails("a", 0.5, 1, 1.5, 2, 2.5, 3), "a", now)).toBe(true);
     expect(
       exceedsLoginLimit(
-        [{ ip: "a", at: now - LOGIN_WINDOW_MS - 1 }, ...fails("a", 1, 2, 3, 4, 5)],
+        [{ ip: "a", at: now - LOGIN_WINDOW_MS - 1 }, ...fails("a", 0.5, 1, 1.5, 2, 2.5)],
         "a",
         now
       )

@@ -1,4 +1,5 @@
-export const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+/** 보안 정책: 같은 IP는 5분에 5번까지 시도할 수 있다. */
+export const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 export const LOGIN_IP_LIMIT = 5;
 export const LOGIN_GLOBAL_LIMIT = 30;
 

@@ -2,7 +2,16 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { Eye, EyeOff, Wallet } from "lucide-react";
+import {
+  ArrowRight,
+  CircleAlert,
+  Eye,
+  EyeOff,
+  LoaderCircle,
+  LockKeyhole,
+  ShieldCheck,
+  Wallet,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -86,30 +95,38 @@ export const PasswordGate = ({ onSuccess }: PasswordGateProps) => {
   );
 
   return (
-    <div
-      className="flex min-h-dvh flex-col items-center justify-center px-4 py-32"
-      style={{ backgroundColor: "var(--background)" }}
-    >
+    <div className="relative isolate flex min-h-dvh items-center justify-center overflow-hidden bg-background px-4 py-16">
+      {/* 은은한 색 번짐과 점 무늬 배경 */}
+      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
+        <div className="absolute -top-40 left-1/2 size-[36rem] -translate-x-1/2 rounded-full bg-emerald-400/20 blur-3xl dark:bg-emerald-500/10" />
+        <div className="absolute -bottom-48 -left-24 size-[28rem] rounded-full bg-sky-400/15 blur-3xl dark:bg-sky-500/10" />
+        <div className="absolute inset-0 [background-image:radial-gradient(var(--border)_1px,transparent_1px)] [mask-image:radial-gradient(ellipse_at_center,black_30%,transparent_75%)] [background-size:22px_22px]" />
+      </div>
+
       <form
         onSubmit={handleSubmit}
-        className={`flex w-80 max-w-full flex-col items-center gap-5 rounded-xl border p-8 ${
+        className={`w-full max-w-sm rounded-3xl border bg-card/80 p-8 shadow-xl shadow-black/5 backdrop-blur-xl sm:p-10 dark:shadow-black/30 ${
           isShaking ? "animate-shake" : ""
         }`}
-        style={{
-          borderColor: "var(--border)",
-          backgroundColor: "var(--card)",
-        }}
       >
-        <span className="grid size-14 place-items-center rounded-full bg-muted text-primary">
-          <Wallet className="size-6" />
-        </span>
+        <div className="flex flex-col items-center text-center">
+          <span className="grid size-14 place-items-center rounded-2xl bg-gradient-to-br from-emerald-400 to-teal-600 text-white shadow-lg shadow-emerald-500/30">
+            <Wallet className="size-7" strokeWidth={2.2} />
+          </span>
+          <h1 className="mt-5 text-2xl font-semibold tracking-tight">머니노트</h1>
+          <p className="mt-1.5 text-sm text-muted-foreground">
+            비밀번호를 입력하고 가계부를 여세요
+          </p>
+        </div>
 
-        <h1 className="text-lg font-medium" style={{ color: "var(--foreground)" }}>
-          머니노트
-        </h1>
-
-        <div className="w-full space-y-3">
-          <InputGroup>
+        <div className="mt-8 space-y-3">
+          <label htmlFor="password" className="sr-only">
+            비밀번호
+          </label>
+          <InputGroup className="h-12 rounded-xl bg-background/60 px-1">
+            <InputGroupAddon>
+              <LockKeyhole />
+            </InputGroupAddon>
             <InputGroupInput
               ref={inputRef}
               id="password"
@@ -123,13 +140,15 @@ export const PasswordGate = ({ onSuccess }: PasswordGateProps) => {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               disabled={isLoading}
-              className="text-center tracking-widest"
+              aria-invalid={error ? true : undefined}
+              aria-describedby={error ? "password-error" : undefined}
+              className="text-base"
               autoFocus
             />
 
             <InputGroupAddon align="inline-end">
               <InputGroupButton
-                size="icon-xs"
+                size="icon-sm"
                 onClick={() => setShowPassword((visible) => !visible)}
                 disabled={isLoading}
                 aria-label={showPassword ? "비밀번호 숨기기" : "비밀번호 보기"}
@@ -140,20 +159,41 @@ export const PasswordGate = ({ onSuccess }: PasswordGateProps) => {
             </InputGroupAddon>
           </InputGroup>
 
+          {error && (
+            <p
+              id="password-error"
+              role="alert"
+              className="flex items-center gap-2 rounded-xl bg-destructive/10 px-3.5 py-2.5 text-sm font-medium text-destructive"
+            >
+              <CircleAlert className="size-4 shrink-0" />
+              {error}
+            </p>
+          )}
+
           <Button
             type="submit"
-            className="w-full"
+            size="lg"
+            className="group h-12 w-full rounded-xl text-base"
             disabled={isLoading || !password.trim()}
           >
-            {isLoading ? "확인 중..." : "입장하기"}
+            {isLoading ? (
+              <>
+                <LoaderCircle className="animate-spin" />
+                확인 중...
+              </>
+            ) : (
+              <>
+                입장하기
+                <ArrowRight className="transition-transform group-hover:translate-x-0.5" />
+              </>
+            )}
           </Button>
         </div>
 
-        {error && (
-          <p className="text-sm font-medium" style={{ color: "var(--destructive)" }}>
-            {error}
-          </p>
-        )}
+        <p className="mt-6 flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
+          <ShieldCheck className="size-3.5" />
+          5분에 5번까지 시도할 수 있어요
+        </p>
       </form>
     </div>
   );
