@@ -12,14 +12,29 @@ export interface FakePlace {
   title: string;
   /** 상단 사진 목록의 원본 주소. 비우면 og:image 한 장만 있는 페이지가 된다. */
   photos: string[];
+  /** 장소 기본 정보(PlaceDetailBase). 내역 지도가 쓰는 좌표·주소·업종 */
+  detail?: { lat: string; lng: string; roadAddress: string; category: string };
 }
+
+/** 여기 넣은 장소 id는 500을 돌려준다. 네이버가 잠깐 막은 상황이다. */
+export const failingPlaces = new Set<string>();
 
 export const FAKE_OG_IMAGE =
   "https://search.pstatic.net/common/?type=f640_380&src=og.jpg";
 
 /** 네이버 플레이스 페이지처럼 상단 사진 목록을 `__APOLLO_STATE__`에 넣는다. 영상은 빠져야 한다. */
-const apolloScript = (id: string, originals: string[]) => {
+const apolloScript = (id: string, { photos: originals, detail }: FakePlace) => {
   const state: Record<string, unknown> = { ROOT_QUERY: { __typename: "Query" } };
+  if (detail) {
+    state[`PlaceDetailBase:${id}`] = {
+      __typename: "PlaceDetailBase",
+      id,
+      category: detail.category,
+      roadAddress: detail.roadAddress,
+      address: "지번 주소",
+      coordinate: { __typename: "Coordinate", x: detail.lng, y: detail.lat },
+    };
+  }
   originals.forEach((originalUrl, index) => {
     state[`PlaceDetailTopPhotoItem:${id}_photo_${index}`] = {
       mediaFormat: "image",
@@ -44,6 +59,10 @@ export const withFakeNaverPlaces = (places: Record<string, FakePlace>) =>
         const server = createServer((req, res) => {
           const id = req.url?.match(/^\/place\/(\d+)\/home/)?.[1];
           const place = id ? places[id] : undefined;
+          if (id && failingPlaces.has(id)) {
+            res.writeHead(500).end();
+            return;
+          }
           res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
           if (!id || !place) {
             res.end("<title>네이버 플레이스</title>");
@@ -53,7 +72,7 @@ export const withFakeNaverPlaces = (places: Record<string, FakePlace>) =>
             `<html><head>
               <meta property="og:title" content="${place.title}"/>
               <meta property="og:image" content="${FAKE_OG_IMAGE.replace(/&/g, "&amp;")}"/>
-            </head><body>${place.photos.length ? apolloScript(id, place.photos) : ""}</body></html>`
+            </head><body>${place.photos.length || place.detail ? apolloScript(id, place) : ""}</body></html>`
           );
         });
         await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));

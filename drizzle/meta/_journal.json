@@ -22,6 +22,13 @@
       "when": 1795395765380,
       "tag": "0002_entry_map_link",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1795404520364,
+      "tag": "0003_entry_map_coords",
+      "breakpoints": true
     }
   ]
 }

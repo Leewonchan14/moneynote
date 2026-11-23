@@ -1093,12 +1093,17 @@ const assertCategoryKind = async (categoryId: number | null, kind: LedgerEntryKi
   }
 };
 
-/** 지도 링크로 장소 이름·사진을 채운다. 네이버 지도가 아니거나 읽지 못하면 비운다. */
+/** 지도 링크로 장소 이름·사진·좌표를 채운다. 네이버 지도가 아니거나 읽지 못하면 비운다. */
 export const readMapPlace = async (mapUrl: string) => {
   const place = mapUrl ? await fetchNaverPlacePreview(mapUrl) : null;
   return {
     mapPlaceName: place?.placeName ?? "",
     mapImageUrls: place?.imageUrls ?? [],
+    mapPlaceId: place?.placeId ?? "",
+    mapLat: place?.lat ?? null,
+    mapLng: place?.lng ?? null,
+    mapAddress: place?.address ?? "",
+    mapCategory: place?.category ?? "",
   };
 };
 
@@ -1268,10 +1273,12 @@ export const updateLedgerEntry = async (
     input.mapUrl === undefined && values.kind === "expense"
       ? undefined
       : entryMapUrl(values.kind, input.mapUrl);
-  // 링크가 바뀌었거나, 예전에 사진을 못 읽은 링크를 다시 저장하면 장소 정보를 새로 읽는다.
+  // 링크가 바뀌었거나, 예전에 사진·좌표를 못 읽은 링크를 다시 저장하면 장소 정보를 새로 읽는다.
   const needsMapPlace =
     mapUrl !== undefined &&
-    (mapUrl !== before.mapUrl || (!before.mapPlaceName && !before.mapImageUrls.length));
+    (mapUrl !== before.mapUrl ||
+      (!before.mapPlaceName && !before.mapImageUrls.length) ||
+      (Boolean(mapUrl) && before.mapLat === null));
   const mapUrlPatch =
     mapUrl === undefined
       ? {}
@@ -1318,7 +1325,7 @@ export const restoreLedgerEntry = async (id: number) => {
   return entry;
 };
 
-const getTripRows = () =>
+export const getTripRows = () =>
   getDb()
     .select()
     .from(schema.ledgerTrips)

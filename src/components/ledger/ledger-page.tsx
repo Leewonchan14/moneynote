@@ -33,6 +33,7 @@ import { CategoryIcon } from "@/components/ledger/category-icon";
 import { EntryDialog } from "@/components/ledger/entry-dialog";
 import type { LedgerEntryView } from "@/components/ledger/entry-list";
 import { LedgerEntryList } from "@/components/ledger/entry-list";
+import { LedgerMapView } from "@/components/ledger/map/map-view";
 import { PasteDialog } from "@/components/ledger/paste-dialog";
 import { MonthPicker, WeekPicker } from "@/components/ledger/period-picker";
 import { RecapCard, type RecapCategory } from "@/components/ledger/recap-card";
@@ -89,6 +90,7 @@ const TABS = [
   { id: "list", label: "내역" },
   { id: "calendar", label: "달력" },
   { id: "stats", label: "통계" },
+  { id: "map", label: "지도" },
   { id: "savings", label: "저축" },
   { id: "recurring", label: "반복" },
   { id: "trips", label: "여행" },
@@ -706,7 +708,11 @@ export const LedgerPage = () => {
     : null;
   const isOverBudget = budgetRemaining < 0;
   const hidesMonthSummary =
-    tab === "stats" || tab === "savings" || tab === "recurring" || tab === "trips";
+    tab === "stats" ||
+    tab === "map" ||
+    tab === "savings" ||
+    tab === "recurring" ||
+    tab === "trips";
   const largePlacePhotos = useLedgerViewStore((state) => state.largePlacePhotos);
   const setLargePlacePhotos = useLedgerViewStore((state) => state.setLargePlacePhotos);
   const hasPlacePhotos = Boolean(
@@ -725,7 +731,10 @@ export const LedgerPage = () => {
     [ledger?.subcategories, filterCategoryId]
   );
   const showsCategoryFilter =
-    tab === "stats" || tab === "calendar" || (tab === "list" && !deferredSearch);
+    tab === "stats" ||
+    tab === "calendar" ||
+    tab === "map" ||
+    (tab === "list" && !deferredSearch);
   const balanceNeedsSetup =
     ledger != null &&
     ledger.account.baseDate != null &&
@@ -777,7 +786,7 @@ export const LedgerPage = () => {
         <div className="mt-5 flex flex-col items-start gap-2">
           <LedgerTabs tab={tab} onChange={setTab} />
 
-          {/* 분류 필터는 내역·달력·통계 탭이 함께 쓴다. 검색 결과는 전체 기간·분류를 보여 준다. */}
+          {/* 분류 필터는 내역·달력·통계·지도 탭이 함께 쓴다. 검색 결과는 전체 기간·분류를 보여 준다. */}
           {ledger && showsCategoryFilter && (
             <div className="flex w-full flex-col gap-1.5">
               <ExpenseCategoryChips
@@ -791,8 +800,12 @@ export const LedgerPage = () => {
                   label="소분류 필터"
                   categoryId={filterCategory.id}
                   subcategories={ledger.subcategories}
-                  // 통계는 기간을 따로 고르니 이 달에 안 쓴 소분류도 모두 띄운다.
-                  entries={tab === "stats" ? allSubcategoryOptions : periodEntries}
+                  // 통계·지도는 기간을 따로 고르니 이 달에 안 쓴 소분류도 모두 띄운다.
+                  entries={
+                    tab === "stats" || tab === "map"
+                      ? allSubcategoryOptions
+                      : periodEntries
+                  }
                   selected={filterSub}
                   onSelect={setSubcategoryFilter}
                 />
@@ -1183,6 +1196,14 @@ export const LedgerPage = () => {
                   activeDay={activeDay}
                   onSelectDay={setSelectedDay}
                   onEdit={openEdit}
+                />
+              )}
+
+              {tab === "map" && (
+                <LedgerMapView
+                  categoryId={filterCategoryId}
+                  subcategory={filterSub === "all" ? null : filterSub}
+                  categoryLabel={categoryFilterLabel}
                 />
               )}
 
