@@ -6,6 +6,7 @@ import {
   formatDistance,
   haversineKm,
   partialRoute,
+  rankDayRouteDays,
   routeDistanceKm,
   type DayRouteRow,
 } from "../src/lib/ledger/day-route";
@@ -398,6 +399,156 @@ test("지도에 찍힌 지출이 한 건이면 버튼이 없고, 같은 곳만 �
   const card = dialog.getByRole("region", { name: "지금 곳" });
   await expect(card).toContainText("동선 서점");
   await expect(card).toContainText("결제 2건 · 책, 엽서");
+});
+
+test.describe("동선 있는 날 한 번에", () => {
+  test("많이 다닌 날 순서: 곳 수, 거리, 최근 날", () => {
+    const day = (date: string, places: number, distanceKm: number) => ({
+      date,
+      places,
+      located: places,
+      distanceKm,
+      spent: 0,
+    });
+    const ranked = rankDayRouteDays([
+      day("2026-01-01", 2, 9),
+      day("2026-01-02", 3, 1),
+      day("2026-01-03", 2, 9),
+      day("2026-01-04", 2, 12),
+    ]);
+    expect(ranked.map((d) => d.date)).toEqual([
+      "2026-01-02",
+      "2026-01-04",
+      "2026-01-03",
+      "2026-01-01",
+    ]);
+  });
+
+  test("API는 좌표 있는 지출이 두 건 이상인 날만 요약해 준다", async ({
+    request,
+    token,
+  }) => {
+    await visit(request, token, { id: "4001", time: "10:00", amount: 5_000, memo: "a" });
+    await visit(request, token, { id: "4003", time: "13:00", amount: 7_000, memo: "b" });
+    await visit(request, token, {
+      id: "4002",
+      time: "09:00",
+      amount: 3_000,
+      memo: "한 곳뿐",
+      entryDate: otherDay(),
+    });
+    const [from, to] = [today(), otherDay()].sort();
+    const res = await request.get(`/api/ledger/day-route/days?from=${from}&to=${to}`, {
+      headers: authHeaders(token),
+    });
+    expect(res.ok()).toBe(true);
+    const { days } = await res.json();
+    expect(days).toEqual([
+      {
+        date: today(),
+        places: 2,
+        located: 2,
+        distanceKm: routeDistanceKm([SPOTS["4001"], SPOTS["4003"]]),
+        spent: 12_000,
+      },
+    ]);
+
+    const reversed = await request.get(
+      `/api/ledger/day-route/days?from=${to}&to=${from}`,
+      { headers: authHeaders(token) }
+    );
+    expect(reversed.status()).toBe(from === to ? 200 : 400);
+    const bad = await request.get("/api/ledger/day-route/days?from=2026-13-01&to=x", {
+      headers: authHeaders(token),
+    });
+    expect(bad.status()).toBe(400);
+    const anonymous = await request.get(
+      `/api/ledger/day-route/days?from=${today()}&to=${today()}`
+    );
+    expect(anonymous.status()).toBe(401);
+  });
+});
+
+test("내역 탭의 날짜 머리에서 그날 동선을 연다", async ({ page, request, token }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await visit(request, token, { id: "4001", time: "10:00", amount: 5_000, memo: "아침" });
+  await visit(request, token, { id: "4003", time: "13:00", amount: 7_000, memo: "점심" });
+  // 지도에 찍힌 지출이 한 건뿐인 날에는 버튼이 없다.
+  await visit(request, token, {
+    id: "4002",
+    time: "09:00",
+    amount: 3_000,
+    memo: "한 곳뿐",
+    entryDate: otherDay(),
+  });
+
+  await openCalendar(page, token);
+  await page.getByRole("tab", { name: "내역" }).click();
+  const daySection = (date: string) =>
+    page
+      .locator("section")
+      .filter({ has: page.getByRole("heading", { name: dayLabel(date), exact: true }) });
+  await expect(daySection(otherDay())).toBeVisible();
+  await expect(
+    daySection(otherDay()).getByRole("button", { name: "동선 보기" })
+  ).toHaveCount(0);
+
+  await daySection(today()).getByRole("button", { name: "동선 보기" }).click();
+  const dialog = routeDialog(page);
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator("[data-map-ready]")).toBeAttached();
+  await expect(dialog).toContainText("오늘 2곳");
+  await expect(dialog.getByRole("region", { name: "지금 곳" })).toContainText(
+    "동선 베이글"
+  );
+});
+
+test("통계 탭의 많이 돌아다닌 날에서 그날 동선을 연다", async ({
+  page,
+  request,
+  token,
+}) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await visit(request, token, { id: "4001", time: "10:00", amount: 5_000, memo: "아침" });
+  await visit(request, token, { id: "4003", time: "13:00", amount: 7_000, memo: "점심" });
+  await visit(request, token, { id: "4004", time: "18:00", amount: 9_000, memo: "저녁" });
+  await visit(request, token, {
+    id: "4002",
+    time: "09:00",
+    amount: 3_000,
+    memo: "아침",
+    entryDate: otherDay(),
+  });
+  await visit(request, token, {
+    id: "4005",
+    time: "11:00",
+    amount: 2_000,
+    memo: "물",
+    entryDate: otherDay(),
+  });
+
+  await openCalendar(page, token);
+  await page.getByRole("tab", { name: "통계" }).click();
+  const list = page.getByRole("list", { name: "많이 돌아다닌 날" });
+  // 1일이면 다른 날이 내일이라 이번 달 통계(오늘까지)에 안 들어간다.
+  const bothDays = !today().endsWith("-01");
+  await expect(list.getByRole("listitem")).toHaveCount(bothDays ? 2 : 1);
+  // 곳이 많은 날이 먼저다.
+  await expect(list.getByRole("listitem").first()).toContainText(dayLabel(today()));
+  await expect(list.getByRole("listitem").first()).toContainText("3곳");
+  if (bothDays) {
+    await expect(list.getByRole("listitem").nth(1)).toContainText(dayLabel(otherDay()));
+  }
+
+  await list
+    .getByRole("listitem")
+    .first()
+    .getByRole("button", { name: "동선 보기" })
+    .click();
+  const dialog = routeDialog(page);
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator("[data-map-ready]")).toBeAttached();
+  await expect(dialog).toContainText("오늘 3곳");
 });
 
 test("지도 탭에서 하루만 고르면 그날 동선을 연다", async ({ page, request, token }) => {
