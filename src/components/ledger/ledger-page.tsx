@@ -206,10 +206,19 @@ const LedgerTabs = ({
   tab: LedgerTab;
   onChange: (tab: LedgerTab) => void;
 }) => (
-  <Tabs value={tab} onValueChange={(next) => onChange(next as LedgerTab)}>
-    <TabsList aria-label="가계부 보기">
+  // 좁은 화면에서는 탭 줄을 화면 너비에 맞춰 나눠 갖는다. 탭이 늘어도 좌우로 넘치지 않는다.
+  <Tabs
+    value={tab}
+    onValueChange={(next) => onChange(next as LedgerTab)}
+    className="w-full sm:w-auto"
+  >
+    <TabsList aria-label="가계부 보기" className="w-full sm:w-auto">
       {TABS.map((option) => (
-        <TabsTrigger key={option.id} value={option.id} className="px-3">
+        <TabsTrigger
+          key={option.id}
+          value={option.id}
+          className="min-w-0 flex-1 px-1 sm:flex-none sm:px-3"
+        >
           {option.label}
         </TabsTrigger>
       ))}

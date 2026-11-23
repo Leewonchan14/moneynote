@@ -421,7 +421,8 @@ export const LedgerMapView = ({
         ))}
 
       {places.length > 0 && (
-        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_320px]">
+        // 열을 minmax(0, 1fr)로 둬, 지도 캔버스가 처음 그린 너비보다 화면이 좁아져도 따라 줄어든다.
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_320px]">
           <div
             ref={mapBoxRef}
             className="h-[52vh] min-h-[300px] scroll-mt-4 overflow-hidden rounded-xl ring-1 ring-foreground/10 md:sticky md:top-4 md:h-[calc(100dvh-140px)]"
