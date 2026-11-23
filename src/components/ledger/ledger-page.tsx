@@ -12,6 +12,7 @@ import {
   Settings2,
   Wallet,
 } from "lucide-react";
+import { useQueryState } from "nuqs";
 import { useCallback, useDeferredValue, useMemo, useState } from "react";
 
 import { AppShell } from "@/components/app-shell";
@@ -33,7 +34,11 @@ import { CategoryIcon } from "@/components/ledger/category-icon";
 import { EntryDialog } from "@/components/ledger/entry-dialog";
 import type { LedgerEntryView } from "@/components/ledger/entry-list";
 import { LedgerEntryList } from "@/components/ledger/entry-list";
-import { LedgerMapView } from "@/components/ledger/map/map-view";
+import {
+  LedgerMapView,
+  MAP_PLACE_PARAM,
+  mapPlaceParser,
+} from "@/components/ledger/map/map-view";
 import { PasteDialog } from "@/components/ledger/paste-dialog";
 import { MonthPicker, WeekPicker } from "@/components/ledger/period-picker";
 import { RecapCard, type RecapCategory } from "@/components/ledger/recap-card";
@@ -377,7 +382,14 @@ export const LedgerPage = () => {
   const [period, setPeriod] = useState<LedgerPeriod>("month");
   const [weekStart, setWeekStart] = useState<string>(() => weekStartOf(todayKst()));
   const isWeek = period === "week";
-  const [tab, setTab] = useState<LedgerTab>("list");
+  // 주소에 지도에서 고른 장소(?place=)가 있으면 지도 탭으로 연다.
+  const [mapPlace, setMapPlace] = useQueryState(MAP_PLACE_PARAM, mapPlaceParser);
+  const [tab, setTab] = useState<LedgerTab>(() => (mapPlace ? "map" : "list"));
+  // 지도 탭을 떠나면 고른 장소를 주소에서 지운다.
+  const changeTab = (next: LedgerTab) => {
+    setTab(next);
+    if (next !== "map" && mapPlace) void setMapPlace(null);
+  };
   const [entryOpen, setEntryOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<LedgerEntryView | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -784,7 +796,7 @@ export const LedgerPage = () => {
 
         {/* 탭은 항상 같은 자리에 두고, 월 이동은 그 아래 왼쪽에 둔다. */}
         <div className="mt-5 flex flex-col items-start gap-2">
-          <LedgerTabs tab={tab} onChange={setTab} />
+          <LedgerTabs tab={tab} onChange={changeTab} />
 
           {/* 분류 필터는 내역·달력·통계·지도 탭이 함께 쓴다. 검색 결과는 전체 기간·분류를 보여 준다. */}
           {ledger && showsCategoryFilter && (

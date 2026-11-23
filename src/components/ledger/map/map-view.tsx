@@ -8,6 +8,7 @@ import {
 } from "@tanstack/react-query";
 import { ExternalLink, Loader2, MapPin, MapPinned, RefreshCw, X } from "lucide-react";
 import dynamic from "next/dynamic";
+import { parseAsString, useQueryState } from "nuqs";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -27,6 +28,11 @@ import {
   type LedgerMapSubcategory,
 } from "@/lib/ledger/map-types";
 import { cn } from "@/lib/utils";
+
+/** 지도에서 고른 장소(LedgerMapPlace.key)를 남기는 주소 쿼리 이름 */
+export const MAP_PLACE_PARAM = "place";
+/** 장소를 고를 때마다 히스토리를 쌓지 않고 주소만 바꾼다. */
+export const mapPlaceParser = parseAsString.withOptions({ history: "replace" });
 
 const Spinner = () => <Loader2 className="size-5 animate-spin text-muted-foreground" />;
 
@@ -63,7 +69,8 @@ const paymentLabel = (payment: LedgerMapPayment) =>
 const PlacePhoto = ({ src, className }: { src: string | null; className?: string }) => (
   <div
     className={cn(
-      "flex shrink-0 items-center justify-center overflow-hidden bg-muted",
+      // 흰 바탕 사진도 테두리가 보이게 한다.
+      "flex shrink-0 items-center justify-center overflow-hidden border border-border bg-muted",
       className
     )}
   >
@@ -95,13 +102,18 @@ const PlaceDetail = ({
     aria-label={`${place.name} 방문 기록`}
     className="overflow-hidden rounded-xl bg-card ring-1 ring-foreground/10"
   >
-    {/* 고른 장소가 바뀌면 사진 위치(몇 번째 사진)를 처음으로 돌린다. */}
-    <PlacePhotoCarousel
-      key={place.key}
-      name={place.name}
-      mapUrl={place.mapUrl}
-      imageUrls={place.imageUrls}
-    />
+    {/*
+      고른 장소가 바뀌면 사진 위치(몇 번째 사진)를 처음으로 돌린다.
+      흰 바탕 사진(로고 등)도 카드 본문과 구분되게 아래에 경계선을 둔다. 사진이 없으면 숨긴다.
+    */}
+    <div className="border-b border-border empty:hidden">
+      <PlacePhotoCarousel
+        key={place.key}
+        name={place.name}
+        mapUrl={place.mapUrl}
+        imageUrls={place.imageUrls}
+      />
+    </div>
     <div className="flex flex-col gap-3 p-4">
       <div className="flex flex-col gap-0.5">
         <div className="flex items-start justify-between gap-2">
@@ -128,7 +140,11 @@ const PlaceDetail = ({
           {place.visits}번 방문 · {formatWon(place.total)}
         </p>
       </div>
-      <ul aria-label="간 날" className="flex flex-col divide-y divide-border">
+      {/* 간 날이 많으면 이 목록만 스크롤한다. 장소 이름과 지도 링크는 늘 보인다. */}
+      <ul
+        aria-label="간 날"
+        className="-mr-2 flex max-h-72 flex-col divide-y divide-border overflow-y-auto overscroll-contain pr-2"
+      >
         {place.entries.map((visit) => {
           const several = visit.payments.length > 1;
           return (
@@ -267,7 +283,8 @@ export const LedgerMapView = ({
   const token = useAuthStore((s) => s.token);
   const queryClient = useQueryClient();
   const [period, setPeriod] = useState<MapPeriod>({ range: "all" });
-  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  // 고른 장소는 주소(?place=)에 남긴다. 새로고침·공유해도 같은 장소가 열린다.
+  const [selectedKey, setSelectedKey] = useQueryState(MAP_PLACE_PARAM, mapPlaceParser);
   const search = toMapSearchParams({ ...period, category: categoryId, sub: subcategory });
 
   const { data, isLoading, error } = useQuery({
@@ -278,12 +295,13 @@ export const LedgerMapView = ({
     ...LEDGER_LIVE_QUERY,
   });
 
-  // 기간·분류가 바뀌면 고른 장소를 닫는다.
-  const [lastSearch, setLastSearch] = useState(search);
-  if (lastSearch !== search) {
-    setLastSearch(search);
-    setSelectedKey(null);
-  }
+  // 기간·분류가 바뀌면 고른 장소를 닫는다. 처음 열 때는 주소의 장소를 그대로 둔다.
+  const lastSearch = useRef(search);
+  useEffect(() => {
+    if (lastSearch.current === search) return;
+    lastSearch.current = search;
+    void setSelectedKey(null);
+  }, [search, setSelectedKey]);
 
   const refresh = useMutation({
     mutationFn: () =>
@@ -306,11 +324,11 @@ export const LedgerMapView = ({
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented) return;
       if (document.querySelector("[role=dialog]")) return;
-      setSelectedKey(null);
+      void setSelectedKey(null);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [hasSelection]);
+  }, [hasSelection, setSelectedKey]);
 
   const places = data?.places ?? [];
   const selected = places.find((place) => place.key === selectedKey) ?? null;
@@ -319,7 +337,7 @@ export const LedgerMapView = ({
   const mapBoxRef = useRef<HTMLDivElement>(null);
   // 이미 고른 장소를 다시 누르면 선택을 푼다.
   const selectPlace = (key: string) =>
-    setSelectedKey((current) => (current === key ? null : key));
+    void setSelectedKey((current) => (current === key ? null : key));
   // 좁은 화면에서는 목록이 지도 아래에 있으므로, 목록에서 고르면 지도가 보이게 올린다.
   const selectFromList = (key: string) => {
     selectPlace(key);
@@ -418,7 +436,7 @@ export const LedgerMapView = ({
             */}
             {selected && (
               <div className="md:sticky md:top-0 md:z-10 md:-mt-3 md:max-h-[calc(100dvh-6rem)] md:overflow-y-auto md:overscroll-contain md:bg-background md:pt-3">
-                <PlaceDetail place={selected} onClose={() => setSelectedKey(null)} />
+                <PlaceDetail place={selected} onClose={() => void setSelectedKey(null)} />
               </div>
             )}
             <PlaceList
