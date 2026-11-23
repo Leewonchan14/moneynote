@@ -36,11 +36,11 @@ setWorkerUrl(new URL("maplibre-gl/dist/maplibre-gl-worker.mjs", import.meta.url)
 /** 핀은 캔버스에 그려 CSS 변수를 못 쓰므로 색을 그대로 쓴다. 고른 핀은 강조색으로 바꾼다. */
 const PIN = "#262626";
 const PIN_SELECTED = "#e5484d";
-const SEOUL = { longitude: 126.978, latitude: 37.5665, zoom: 11 };
+export const SEOUL = { longitude: 126.978, latitude: 37.5665, zoom: 11 };
 const FOCUS_ZOOM = 15;
 
 /** 지도 컨트롤의 접근성 이름을 한국어로 */
-const MAP_LOCALE = {
+export const MAP_LOCALE = {
   "NavigationControl.ZoomIn": "확대",
   "NavigationControl.ZoomOut": "축소",
   "AttributionControl.ToggleAttribution": "지도 출처 보기",
@@ -60,7 +60,7 @@ const KOREAN_LABEL: ExpressionSpecification = [
   ["get", "name"],
 ];
 
-const applyKoreanLabels = (map: MapLibreMap) => {
+export const applyKoreanLabels = (map: MapLibreMap) => {
   for (const layer of map.getStyle().layers ?? []) {
     if (layer.type !== "symbol" || layer.id.startsWith(OWN_LAYER_PREFIX)) continue;
     const field = map.getLayoutProperty(layer.id, "text-field");
