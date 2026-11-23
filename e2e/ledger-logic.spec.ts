@@ -13,6 +13,16 @@ import {
   type InsightEntry,
 } from "../src/lib/ledger/insights";
 import {
+  extractMapUrl,
+  isHttpUrl,
+  toLargePlacePhotoUrl,
+} from "../src/lib/ledger/map-url";
+import {
+  extractNaverPlaceId,
+  parseNaverPlaceHtml,
+  toPlacePhotoUrl,
+} from "../src/lib/ledger/naver-place";
+import {
   parseLedgerNotifications,
   suggestLedgerCategoryName,
 } from "../src/lib/ledger/notification";
@@ -718,5 +728,90 @@ test.describe("인사이트", () => {
     expect(result.fixedItems).toEqual([
       { memo: "통신비", amount: 55_000, count: 1, reason: "recurring" },
     ]);
+  });
+});
+
+test.describe("지도 링크", () => {
+  test("공유 문구에서 첫 링크만 꺼내고 http(s)만 받는다", () => {
+    expect(
+      extractMapUrl("[네이버 지도]\n성수 파스타집\nhttps://naver.me/xAbC12 공유")
+    ).toBe("https://naver.me/xAbC12");
+    expect(extractMapUrl("  링크 없음  ")).toBe("링크 없음");
+    expect(isHttpUrl("카카오맵 https://kko.to/AbCdEf")).toBe(true);
+    expect(isHttpUrl("javascript:alert(1)")).toBe(false);
+    expect(
+      toLargePlacePhotoUrl("https://search.pstatic.net/common/?type=f640_380&src=a.jpg")
+    ).toBe("https://search.pstatic.net/common/?type=f1200_800&src=a.jpg");
+    expect(toLargePlacePhotoUrl("https://other.example/a.jpg?type=f640_380")).toBe(
+      "https://other.example/a.jpg?type=f640_380"
+    );
+  });
+
+  test("여러 꼴의 네이버 지도 주소에서 장소 id를 꺼낸다", () => {
+    expect(
+      extractNaverPlaceId("https://map.naver.com/p/entry/place/2077451690?c=15")
+    ).toBe("2077451690");
+    expect(
+      extractNaverPlaceId(
+        "https://map.naver.com/p/search/성수카페/place/1234567?placePath=/home"
+      )
+    ).toBe("1234567");
+    // naver.me 단축 링크가 처음 넘기는 주소
+    expect(
+      extractNaverPlaceId(
+        "http://map.naver.com?app=Y&pinType=site&appMenu=location&pinId=1914077045&menu=location"
+      )
+    ).toBe("1914077045");
+    expect(
+      extractNaverPlaceId("https://m.place.naver.com/restaurant/2077451690/home")
+    ).toBe("2077451690");
+    expect(extractNaverPlaceId("https://pcmap.place.naver.com/place/42")).toBe("42");
+    // 단축 링크 자체나 네이버가 아닌 주소에서는 꺼내지 않는다.
+    expect(extractNaverPlaceId("https://naver.me/5grLIgJV")).toBeNull();
+    expect(extractNaverPlaceId("https://evil.example/place/123")).toBeNull();
+    expect(extractNaverPlaceId("https://map.naver.com/p/directions")).toBeNull();
+  });
+
+  test("플레이스 페이지에서 장소 이름과 대표 사진을 읽는다", () => {
+    const html = `<meta id="og:title" property="og:title" content="성수 파스타집 : 네이버\x1c"/>
+      <meta id="og:image" property="og:image" content="https://search.pstatic.net/common/?autoRotate=true&amp;type=f640_380&amp;src=a.jpg"/>`;
+    // 상단 사진 목록이 없으면 og:image 한 장을 쓴다.
+    expect(parseNaverPlaceHtml(html)).toEqual({
+      placeName: "성수 파스타집",
+      imageUrls: [
+        "https://search.pstatic.net/common/?autoRotate=true&type=f640_380&src=a.jpg",
+      ],
+    });
+    // https가 아닌 사진은 쓰지 않는다.
+    expect(
+      parseNaverPlaceHtml('<meta property="og:image" content="javascript:alert(1)"/>')
+    ).toEqual({ placeName: "", imageUrls: [] });
+  });
+
+  test("상단 사진 목록에서 영상·https 아닌 것·중복을 빼고 최대 10장까지 읽는다", () => {
+    const state: Record<string, unknown> = {};
+    const photo = (key: string, item: Record<string, unknown>) => {
+      state[`PlaceDetailTopPhotoItem:${key}`] = {
+        mediaFormat: "image",
+        video: null,
+        ...item,
+      };
+    };
+    photo("a", { originalUrl: "https://x.pstatic.net/a.jpg", title: '괄호 "}{" 문자열' });
+    photo("clip", {
+      mediaFormat: "video",
+      video: { id: 1 },
+      originalUrl: "https://x/v.jpg",
+    });
+    photo("http", { originalUrl: "http://x.pstatic.net/insecure.jpg" });
+    photo("dup", { originalUrl: "https://x.pstatic.net/a.jpg" });
+    for (let i = 0; i < 12; i += 1) photo(`n${i}`, { originalUrl: `https://x/${i}.jpg` });
+    const html = `<meta property="og:image" content="https://og.jpg"/>
+      <script>window.__APOLLO_STATE__ = ${JSON.stringify(state)};window.__OTHER__ = {"a":1};</script>`;
+
+    const { imageUrls } = parseNaverPlaceHtml(html);
+    expect(imageUrls).toHaveLength(10);
+    expect(imageUrls[0]).toBe(toPlacePhotoUrl("https://x.pstatic.net/a.jpg"));
+    expect(imageUrls[1]).toBe(toPlacePhotoUrl("https://x/0.jpg"));
   });
 });

@@ -14,6 +14,8 @@ import {
   type LedgerCategoryColorKey,
   type LedgerCategoryIconKey,
 } from "@/lib/ledger/icons";
+import { extractMapUrl, isHttpUrl, MAX_MAP_URL_LENGTH } from "@/lib/ledger/map-url";
+import { fetchNaverPlacePreview } from "@/lib/ledger/naver-place";
 import { suggestLedgerCategoryName } from "@/lib/ledger/notification";
 
 export type LedgerEntryKind = "expense" | "income" | "transfer";
@@ -39,6 +41,12 @@ export type LedgerEntryView = {
   recurringId: number | null;
   memo: string;
   note: string;
+  /** 장소 지도 링크. 없으면 빈 문자열 */
+  mapUrl: string;
+  /** 네이버 지도 링크에서 읽은 장소 이름. 없으면 빈 문자열 */
+  mapPlaceName: string;
+  /** 네이버 지도 링크에서 읽은 장소 사진 주소들. 앞의 것이 대표 사진 */
+  mapImageUrls: string[];
   tags: string;
   tripId: number | null;
   tripName: string | null;
@@ -161,6 +169,8 @@ export interface LedgerEntryInput {
   savingsId?: number | null;
   memo?: string;
   note?: string;
+  /** 지출에만 둔다. 생략하면 수정할 때 기존 지도 링크를 그대로 둔다. */
+  mapUrl?: string;
   tags?: string;
   /** 생략하면 날짜로 여행을 찾고, null이면 여행에 넣지 않는다. */
   tripId?: number | null;
@@ -323,6 +333,20 @@ export const normalizeEntryNote = (value: unknown): string => {
   return note;
 };
 
+export const normalizeEntryMapUrl = (value: unknown): string => {
+  if (value == null) return "";
+  if (typeof value !== "string") throw new LedgerError("지도 링크를 확인해 주세요.");
+  if (!value.trim()) return "";
+  const raw = extractMapUrl(value);
+  if (raw.length > MAX_MAP_URL_LENGTH) {
+    throw new LedgerError(`지도 링크는 ${MAX_MAP_URL_LENGTH}자 이하로 입력해 주세요.`);
+  }
+  if (!isHttpUrl(raw)) {
+    throw new LedgerError("지도 링크는 https://로 시작하는 주소로 입력해 주세요.");
+  }
+  return new URL(raw).href;
+};
+
 const normalizeTags = (value: unknown): string => {
   if (value == null) return "";
   if (typeof value !== "string") throw new LedgerError("태그를 확인해 주세요.");
@@ -474,6 +498,9 @@ export const toLedgerEntryView = (
     recurringId: entry.recurringId,
     memo: entry.memo,
     note: entry.note,
+    mapUrl: entry.mapUrl,
+    mapPlaceName: entry.mapPlaceName,
+    mapImageUrls: entry.mapImageUrls,
     tripId: entry.tripId,
     tripName: refName(refs.trips, entry.tripId),
   };
@@ -1066,6 +1093,19 @@ const assertCategoryKind = async (categoryId: number | null, kind: LedgerEntryKi
   }
 };
 
+/** 지도 링크로 장소 이름·사진을 채운다. 네이버 지도가 아니거나 읽지 못하면 비운다. */
+export const readMapPlace = async (mapUrl: string) => {
+  const place = mapUrl ? await fetchNaverPlacePreview(mapUrl) : null;
+  return {
+    mapPlaceName: place?.placeName ?? "",
+    mapImageUrls: place?.imageUrls ?? [],
+  };
+};
+
+/** 지도 링크는 지출에만 둔다. 입금·이체로 바꾸면 비운다. */
+const entryMapUrl = (kind: LedgerEntryKind, value: unknown) =>
+  kind === "expense" ? normalizeEntryMapUrl(value) : "";
+
 export const createLedgerEntry = async (
   input: LedgerEntryInput,
   source: LedgerEntrySource = "web"
@@ -1078,9 +1118,11 @@ export const createLedgerEntry = async (
     values.kind,
     await getTripRows()
   );
+  const mapUrl = entryMapUrl(values.kind, input.mapUrl);
+  const mapPlace = await readMapPlace(mapUrl);
   const [entry] = await getDb()
     .insert(schema.ledgerEntries)
-    .values({ ...values, tripId })
+    .values({ ...values, mapUrl, ...mapPlace, tripId })
     .returning();
   await logEntryHistory(entry.id, "create", source, null, entry);
   return entry;
@@ -1221,9 +1263,22 @@ export const updateLedgerEntry = async (
           ),
         };
   const before = await findActiveEntry(entryId);
+  // 지도 링크를 보내지 않는 호출은 기존 링크를 둔다. 다만 지출이 아니게 되면 비운다.
+  const mapUrl =
+    input.mapUrl === undefined && values.kind === "expense"
+      ? undefined
+      : entryMapUrl(values.kind, input.mapUrl);
+  // 링크가 바뀌었거나, 예전에 사진을 못 읽은 링크를 다시 저장하면 장소 정보를 새로 읽는다.
+  const needsMapPlace =
+    mapUrl !== undefined &&
+    (mapUrl !== before.mapUrl || (!before.mapPlaceName && !before.mapImageUrls.length));
+  const mapUrlPatch =
+    mapUrl === undefined
+      ? {}
+      : { mapUrl, ...(needsMapPlace ? await readMapPlace(mapUrl) : {}) };
   const [entry] = await getDb()
     .update(schema.ledgerEntries)
-    .set({ ...values, ...tripPatch, updatedAt: new Date() })
+    .set({ ...values, ...mapUrlPatch, ...tripPatch, updatedAt: new Date() })
     .where(and(eq(schema.ledgerEntries.id, entryId), activeEntry))
     .returning();
   if (!entry) throw new LedgerError("기록을 찾을 수 없어요.");
@@ -1418,6 +1473,7 @@ export const searchLedgerEntries = async (query: string, limit = 200) => {
       [
         entry.memo,
         entry.note,
+        entry.mapPlaceName,
         entry.tags,
         entry.categoryName ?? "",
         entry.subcategoryName ?? "",

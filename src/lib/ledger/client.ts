@@ -11,6 +11,7 @@ export const ledgerKeys = {
     ["ledger", "recap", period, key, scope ?? "all-entries"] as const,
   suggestions: ["ledger", "suggestions"] as const,
   recurringCandidates: ["ledger", "recurring-candidates"] as const,
+  mapPlace: (url: string) => ["ledger", "map-place", url] as const,
   insights: (month: string, scope?: string) =>
     ["ledger", "insights", month, scope ?? "all-entries"] as const,
 };

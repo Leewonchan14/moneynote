@@ -12,14 +12,20 @@ import { E2E_PASSWORD, makeTempDir, removeDir, startServer } from "./server";
 export { expect } from "@playwright/test";
 export { E2E_PASSWORD };
 
-export const test = base.extend<{ appUrl: string; token: string }>({
+export const test = base.extend<{
+  appUrl: string;
+  token: string;
+  /** 앱 서버에 더 넣을 환경 변수. 가짜 외부 서버를 가리킬 때 쓴다. */
+  appEnv: Record<string, string>;
+}>({
+  appEnv: [{}, { option: true }],
   // 테스트마다 빈 DB로 서버를 새로 띄워 서로 영향을 주지 않게 한다.
-  appUrl: async ({}, provide) => {
+  appUrl: async ({ appEnv }, provide) => {
     const template = process.env.E2E_TEMPLATE_DB;
     if (!template) throw new Error("E2E_TEMPLATE_DB가 없어요.");
     const dataDir = makeTempDir("db");
     cpSync(template, dataDir, { recursive: true });
-    const server = await startServer(dataDir);
+    const server = await startServer(dataDir, appEnv);
     await provide(server.url);
     await server.stop();
     removeDir(dataDir);
@@ -63,6 +69,9 @@ interface LedgerEntry {
   tripId: number | null;
   tripName: string | null;
   recurringId?: number | null;
+  mapUrl: string;
+  mapPlaceName: string;
+  mapImageUrls: string[];
 }
 
 interface Ledger {
@@ -111,6 +120,7 @@ export const addEntry = async (
     entryTime?: string | null;
     tags?: string;
     tripId?: number | null;
+    mapUrl?: string;
   }
 ) => {
   const res = await request.post("/api/ledger/entries", {
