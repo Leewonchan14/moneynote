@@ -480,3 +480,52 @@ test("간 날이 많으면 장소 카드 안의 간 날 목록만 스크롤한�
     .toBe(true);
   await expect(detail.getByRole("link", { name: "네이버 지도에서 열기" })).toBeVisible();
 });
+
+test("좁은 모바일 화면에서도 지도 탭이 좌우로 넘치지 않는다", async ({
+  page,
+  request,
+  token,
+}) => {
+  test.skip(test.info().project.name !== "mobile", "모바일 화면만 본다");
+  // 메모가 긴 결제가 여러 날 있으면 고른 장소 카드가 넓어져 지도 칸을 밀어냈다.
+  for (let day = 1; day <= 5; day += 1) {
+    await addPlace(request, token, {
+      memo: `아주 긴 메모 텍스트가 들어간 결제 내역 ${day}`,
+      amount: 12_345,
+      mapUrl: placeUrl("2001"),
+      entryDate: daysAgo(day),
+    });
+  }
+  await addPlace(request, token, {
+    memo: "라테",
+    amount: 5_500,
+    mapUrl: placeUrl("2002"),
+  });
+
+  /** 앱은 안쪽 스크롤 칸(AppShell)에서 스크롤한다. 그 칸과 문서 모두 좌우로 넘치면 안 된다. */
+  const overflowX = () =>
+    page.evaluate(() =>
+      [document.documentElement, ...document.querySelectorAll(".overflow-y-auto")]
+        .map((el) => el.scrollWidth - el.clientWidth)
+        .reduce((max, value) => Math.max(max, value), 0)
+    );
+
+  await openMap(page, token);
+  await expect(page.locator("[data-map-ready]")).toBeVisible();
+  // 넓게 그린 뒤 좁은 폰 너비로 줄여도 지도가 따라 줄어든다.
+  for (const width of [375, 360, 320]) {
+    await page.setViewportSize({ width, height: 780 });
+    await expect.poll(overflowX).toBe(0);
+  }
+  // 탭이 일곱 개여도 탭 줄이 화면 안에 들어간다.
+  const tabs = await page.getByRole("tablist", { name: "가계부 보기" }).boundingBox();
+  expect(tabs!.x + tabs!.width).toBeLessThanOrEqual(320);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await placeList(page)
+    .getByRole("button", { name: /성수 파스타집/ })
+    .click();
+  await expect(
+    page.getByRole("region", { name: "성수 파스타집 방문 기록" })
+  ).toBeVisible();
+  await expect.poll(overflowX).toBe(0);
+});
