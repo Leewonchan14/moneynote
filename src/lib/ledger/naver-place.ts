@@ -7,6 +7,7 @@
  * - 이름: og:title
  * - 사진: 페이지에 들어 있는 데이터(`__APOLLO_STATE__`)의 상단 사진 목록(`topPhotos`).
  *   업체·방문자 사진만 쓰고 영상은 뺀다. 목록이 없으면 og:image 한 장을 쓴다.
+ * - 좌표·주소·업종: 같은 데이터의 장소 기본 정보(`PlaceDetailBase`). 내역 지도(지도 탭)에 쓴다.
  *
  * 사진 파일은 저장하지 않고 주소만 저장한다. 화면은 네이버 이미지 서버에서 바로 받는다.
  * 읽지 못하면 null을 돌려주고, 내역 저장은 그대로 진행한다.
@@ -25,7 +26,17 @@ const placeOrigin = () =>
 /** 한 장소에서 저장할 최대 사진 수 */
 export const MAX_PLACE_PHOTOS = 10;
 
-export interface NaverPlacePreview {
+export interface NaverPlaceDetail {
+  /** WGS84 위도·경도. 읽지 못하면 null */
+  lat: number | null;
+  lng: number | null;
+  /** 도로명 주소, 없으면 지번 주소 */
+  address: string;
+  /** 네이버 업종 (예: "중식당", "카페,디저트") */
+  category: string;
+}
+
+export interface NaverPlacePreview extends NaverPlaceDetail {
   placeId: string;
   placeName: string;
   /** 앞의 것이 대표 사진 */
@@ -154,6 +165,37 @@ const readTopPhotos = (state: Record<string, unknown>): string[] =>
     .map((item) => item.originalUrl)
     .filter(isHttps);
 
+interface PlaceDetailBase {
+  coordinate?: { x?: unknown; y?: unknown } | null;
+  roadAddress?: unknown;
+  address?: unknown;
+  category?: unknown;
+}
+
+const toText = (value: unknown) => (typeof value === "string" ? value.trim() : "");
+
+/** 좌표는 "126.9283111" 같은 문자열로 온다. 범위를 벗어나면 버린다. */
+const toCoordinate = (value: unknown, limit: number): number | null => {
+  const num = typeof value === "number" ? value : Number.parseFloat(toText(value));
+  return Number.isFinite(num) && Math.abs(num) <= limit && num !== 0 ? num : null;
+};
+
+/** 장소 기본 정보(`PlaceDetailBase:<id>`)의 좌표·주소·업종 */
+const readPlaceDetail = (state: Record<string, unknown> | null): NaverPlaceDetail => {
+  const entry = state
+    ? Object.entries(state).find(([key]) => key.startsWith("PlaceDetailBase:"))
+    : undefined;
+  const base = (entry?.[1] ?? {}) as PlaceDetailBase;
+  const lat = toCoordinate(base.coordinate?.y, 90);
+  const lng = toCoordinate(base.coordinate?.x, 180);
+  return {
+    lat: lat !== null && lng !== null ? lat : null,
+    lng: lat !== null && lng !== null ? lng : null,
+    address: toText(base.roadAddress) || toText(base.address),
+    category: toText(base.category),
+  };
+};
+
 export const parseNaverPlaceHtml = (html: string) => {
   const state = readApolloState(html);
   const photos = state ? readTopPhotos(state).map(toPlacePhotoUrl) : [];
@@ -162,10 +204,11 @@ export const parseNaverPlaceHtml = (html: string) => {
   return {
     placeName: toPlaceName(metaContent(html, "og:title")),
     imageUrls: [...new Set(imageUrls)].slice(0, MAX_PLACE_PHOTOS),
+    ...readPlaceDetail(state),
   };
 };
 
-/** 네이버 지도 링크의 장소 이름·사진. 네이버 링크가 아니거나 읽지 못하면 null */
+/** 네이버 지도 링크의 장소 이름·사진·좌표. 네이버 링크가 아니거나 읽지 못하면 null */
 export const fetchNaverPlacePreview = async (
   mapUrl: string
 ): Promise<NaverPlacePreview | null> => {
@@ -176,7 +219,7 @@ export const fetchNaverPlacePreview = async (
     const res = await fetchWithTimeout(`${placeOrigin()}/place/${placeId}/home`);
     if (!res.ok) return null;
     const parsed = parseNaverPlaceHtml(await res.text());
-    if (!parsed.placeName && !parsed.imageUrls.length) return null;
+    if (!parsed.placeName && !parsed.imageUrls.length && parsed.lat === null) return null;
     return { placeId, ...parsed };
   } catch (error) {
     console.warn("[ledger] 네이버 장소 사진을 읽지 못했어요.", error);

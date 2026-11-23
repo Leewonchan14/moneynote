@@ -1,5 +1,6 @@
 import {
   boolean,
+  doublePrecision,
   index,
   integer,
   jsonb,
@@ -149,6 +150,12 @@ export const ledgerEntries = pgTable(
     mapPlaceName: text("map_place_name").notNull().default(""), // 네이버 지도 링크에서 읽은 장소 이름
     // 네이버 지도 링크에서 읽은 장소 사진 주소들 (앞의 것이 대표 사진)
     mapImageUrls: jsonb("map_image_urls").$type<string[]>().notNull().default([]),
+    // 네이버 지도 링크에서 읽은 장소 id·좌표·주소·업종. 내역 지도(지도 탭)에 핀으로 찍는다.
+    mapPlaceId: text("map_place_id").notNull().default(""),
+    mapLat: doublePrecision("map_lat"),
+    mapLng: doublePrecision("map_lng"),
+    mapAddress: text("map_address").notNull().default(""),
+    mapCategory: text("map_category").notNull().default(""),
     tags: text("tags").notNull().default(""),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
