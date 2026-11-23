@@ -41,6 +41,8 @@ test("로그인 화면", async ({ page, browser, appUrl }) => {
     const pc = await desktop.newPage();
     await pc.goto("/");
     await pc.locator("#password").waitFor();
+    // 폼이 나타나고 브랜드 패널 막대가 다 자란 뒤 찍는다.
+    await pause(pc, 1200);
     if (colorScheme === "dark") {
       await pc.evaluate(() => document.documentElement.classList.add("dark"));
       await pc.locator("#password").fill("틀린비밀번호");
