@@ -201,6 +201,64 @@ test.describe("지도 링크", () => {
 });
 
 test.describe("장소 사진", () => {
+  test("내역 추가 창에서 네이버 지도 링크를 넣으면 저장 전에 장소 사진을 미리 본다", async ({
+    page,
+    request,
+    token,
+  }) => {
+    await openLedger(page, token);
+    await page.getByRole("button", { name: "내역 추가" }).first().click();
+    const dialog = page.getByRole("dialog");
+    await dialog.locator("#ledger-amount").fill("32000");
+    await dialog.locator("#ledger-memo").fill("파스타 점심");
+    const mapInput = dialog.locator("#ledger-map-url");
+
+    // 못 찾는 장소는 안내만 한다.
+    await mapInput.fill(MISSING_URL);
+    await expect(
+      dialog.getByText(
+        "네이버 지도에서 장소 사진을 찾지 못했어요. 저장하면 한 번 더 불러와요."
+      )
+    ).toBeVisible();
+
+    // 공유 문구를 붙이면 링크만 남기고, 그 장소 사진을 바로 넘겨 본다.
+    await mapInput.fill(`[네이버 지도]\n성수 파스타집\n${PASTA_URL}`);
+    await mapInput.blur();
+    await expect(mapInput).toHaveValue(PASTA_URL);
+    const carousel = dialog.getByRole("region", { name: "성수 파스타집 사진 3장" });
+    await expect(carousel.getByRole("img")).toHaveCount(3);
+    await expect(
+      carousel.getByRole("img", { name: "성수 파스타집 사진 1" })
+    ).toHaveAttribute("src", PASTA[0]);
+    await carousel.getByRole("button", { name: "다음 사진" }).click();
+    await expect(carousel.getByText("2 / 3")).toBeVisible();
+    await expect(
+      dialog.getByRole("link", { name: "성수 파스타집 지도 열기" })
+    ).toHaveAttribute("href", PASTA_URL);
+
+    await dialog.getByRole("button", { name: "저장" }).click();
+    await expect(dialog).toBeHidden();
+    expect(await entryOf(request, token, "파스타 점심")).toMatchObject({
+      mapUrl: PASTA_URL,
+      mapPlaceName: "성수 파스타집",
+      mapImageUrls: PASTA,
+    });
+  });
+
+  test("미리보기 API는 로그인과 네이버 지도 링크가 필요하다", async ({
+    request,
+    token,
+  }) => {
+    const preview = (url: string, headers = authHeaders(token)) =>
+      request.get(`/api/ledger/map-place?url=${encodeURIComponent(url)}`, { headers });
+    expect((await preview(PASTA_URL, {})).status()).toBe(401);
+    expect((await preview("https://evil.example/place/1")).status()).toBe(400);
+    expect(await (await preview(PASTA_URL)).json()).toEqual({
+      place: { placeName: "성수 파스타집", imageUrls: PASTA },
+    });
+    expect(await (await preview(MISSING_URL)).json()).toEqual({ place: null });
+  });
+
   test("내역에서 장소 사진을 보고, 크게 넘겨 보고, 수정 화면에서도 본다", async ({
     page,
     request,
@@ -256,12 +314,16 @@ test.describe("장소 사진", () => {
       dialog.getByRole("link", { name: "성수 파스타집 지도 열기" })
     ).toHaveAttribute("href", PASTA_URL);
 
-    // 링크를 다른 장소로 바꾸면 저장 전에는 안내만, 저장하면 새 장소 사진으로 바뀐다.
+    // 링크를 다른 장소로 바꾸면 저장 전에 새 장소를 미리 보고, 저장하면 그 장소로 바뀐다.
     await dialog.locator("#ledger-map-url").fill(OG_ONLY_URL);
     await expect(carousel).toBeHidden();
     await expect(
-      dialog.getByText("저장하면 네이버 지도의 장소 사진을 함께 보여 줘요.")
-    ).toBeVisible();
+      dialog.getByRole("link", { name: "망원 카페 지도 열기" })
+    ).toHaveAttribute("href", OG_ONLY_URL);
+    await expect(dialog.getByRole("img", { name: "망원 카페 사진" })).toHaveAttribute(
+      "src",
+      FAKE_OG_IMAGE
+    );
     await dialog.getByRole("button", { name: "저장" }).click();
     await expect(dialog).toBeHidden();
     expect(await entryOf(request, token, "성수동 파스타")).toMatchObject({

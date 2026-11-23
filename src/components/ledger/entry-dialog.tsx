@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ExternalLink } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { CategoryIcon } from "@/components/ledger/category-icon";
@@ -46,6 +46,21 @@ const numberDisplay = (digits: string) =>
 const cleanDigits = (value: string) => value.replace(/\D/g, "").replace(/^0+(?=\d)/, "");
 
 const MAX_SUGGESTION_CHIPS = 8;
+
+/** 입력이 잠깐 멈춘 뒤의 값. 링크를 치는 동안 매번 장소를 읽지 않게 한다. */
+const useSettledValue = <T,>(value: T, delayMs = 400) => {
+  const [settled, setSettled] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setSettled(value), delayMs);
+    return () => clearTimeout(timer);
+  }, [value, delayMs]);
+  return settled;
+};
+
+interface MapPlacePreview {
+  placeName: string;
+  imageUrls: string[];
+}
 
 const FieldLabel = ({ children }: { children: React.ReactNode }) => (
   <p className="text-[12px] font-medium text-muted-foreground">{children}</p>
@@ -127,6 +142,26 @@ const EntryForm = ({ ledger, defaultDate, entry, onOpenChange }: Omit<Props, "op
     entry.mapUrl !== "" &&
     extractMapUrl(mapUrl) === entry.mapUrl &&
     Boolean(entry.mapImageUrls.length || entry.mapPlaceName);
+  // 저장하기 전에도 네이버 지도 링크의 장소 사진을 미리 읽어 보여 준다.
+  const typedMapUrl = extractMapUrl(mapUrl);
+  const settledMapUrl = useSettledValue(typedMapUrl);
+  const wantsPreview = !savedPlace && isNaverMapUrl(typedMapUrl);
+  const previewUrl = wantsPreview && settledMapUrl === typedMapUrl ? typedMapUrl : null;
+  const placePreview = useQuery({
+    queryKey: ledgerKeys.mapPlace(previewUrl ?? ""),
+    queryFn: async () => {
+      const data = await ledgerRequest<{ place: MapPlacePreview | null }>(
+        token,
+        `/api/ledger/map-place?url=${encodeURIComponent(previewUrl ?? "")}`
+      );
+      return data.place;
+    },
+    enabled: Boolean(token && previewUrl),
+    staleTime: Infinity,
+    retry: false,
+  });
+  const previewPlace = previewUrl ? placePreview.data : undefined;
+  const previewLoading = wantsPreview && (previewUrl === null || placePreview.isPending);
   const [tags, setTags] = useState(entry?.tags ?? "");
   const [confirmDelete, setConfirmDelete] = useState(false);
   // undefined면 아직 고르지 않은 상태라 날짜로 여행을 추천한다.
@@ -573,12 +608,20 @@ const EntryForm = ({ ledger, defaultDate, entry, onOpenChange }: Omit<Props, "op
                 placeName={entry.mapPlaceName}
                 imageUrls={entry.mapImageUrls}
               />
+            ) : previewUrl && previewPlace ? (
+              <MapPlaceCard
+                url={previewUrl}
+                placeName={previewPlace.placeName}
+                imageUrls={previewPlace.imageUrls}
+              />
+            ) : previewLoading ? (
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                네이버 지도에서 장소 사진을 불러오는 중이에요…
+              </p>
             ) : (
-              isNaverMapUrl(extractMapUrl(mapUrl)) && (
+              wantsPreview && (
                 <p className="mt-1 text-[11px] text-muted-foreground">
-                  {entry?.mapUrl === extractMapUrl(mapUrl)
-                    ? "네이버 지도에서 장소 사진을 찾지 못했어요. 다시 저장하면 한 번 더 불러와요."
-                    : "저장하면 네이버 지도의 장소 사진을 함께 보여 줘요."}
+                  네이버 지도에서 장소 사진을 찾지 못했어요. 저장하면 한 번 더 불러와요.
                 </p>
               )
             )}

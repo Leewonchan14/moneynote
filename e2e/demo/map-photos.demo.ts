@@ -122,12 +122,31 @@ test("지도 링크 장소 사진과 달력 사진", async ({
   await mapInput.fill(`[네이버 지도]\n샘플 베이커리\n서울 어딘가\n${placeUrl("2005")}`);
   await pause(page, 1200);
   await mapInput.blur();
+  // 저장하기 전에 장소 사진을 미리 넘겨 본다.
+  const preview = dialog.getByRole("region", { name: /샘플 베이커리 사진/ });
+  await preview.waitFor();
+  await pause(page, 600);
+  await scrollToTarget(mapInput, { offset: 80 });
   await pause(page, 1500);
+  await preview.getByRole("button", { name: "다음 사진" }).tap();
+  await pause(page, 1200);
   await dialog.getByRole("button", { name: "저장" }).tap();
   await dialog.waitFor({ state: "hidden" });
-  await pause(page, 2000);
+  await pause(page, 1200);
 
-  // 2) 내역의 장소 사진을 눌러 크게 넘겨 본다.
+  // 2) 내역 목록: 아이콘 자리에 대표 사진, 줄 아래에 장소 이름과 사진 한 줄.
+  const listRows = page.getByRole("button", { name: /베이커리/ }).first();
+  await scrollToTarget(listRows, { offset: 120, duration: 1400 });
+  await pause(page, 3000);
+  await scrollToTarget(page.getByRole("button", { name: /공원 산책 간식/ }).first(), {
+    offset: 260,
+    duration: 1400,
+  });
+  await pause(page, 2500);
+  await scrollToTarget(listRows, { offset: 120 });
+  await pause(page, 800);
+
+  // 3) 내역의 장소 사진을 눌러 크게 넘겨 본다.
   await page.getByRole("button", { name: "샘플 베이커리 사진 1 크게 보기" }).tap();
   const viewer = page.getByRole("dialog", { name: "샘플 베이커리 사진 크게 보기" });
   await viewer.waitFor();
@@ -139,7 +158,7 @@ test("지도 링크 장소 사진과 달력 사진", async ({
   await viewer.getByRole("button", { name: "닫기" }).tap();
   await pause(page, 1000);
 
-  // 3) 달력에서 그날 간 곳 사진을 폴라로이드로 본다.
+  // 4) 달력에서 그날 간 곳 사진을 폴라로이드로 본다.
   await page.getByRole("tab", { name: "달력" }).tap();
   await pause(page, 2500);
   const cafeDay = page.getByRole("button", { name: /간 곳 샘플 카페/ });
@@ -150,7 +169,7 @@ test("지도 링크 장소 사진과 달력 사진", async ({
   });
   await pause(page, 2500);
 
-  // 4) 사진을 크게 보여 줄 수도 있다.
+  // 5) 사진을 크게 보여 줄 수도 있다.
   await page
     .getByRole("group", { name: "장소 사진 크기" })
     .getByRole("button", { name: "사진 크게" })
@@ -172,6 +191,17 @@ test("지도 링크 장소 사진과 달력 사진", async ({
   await routeSamples(desktop);
   const pc = await desktop.newPage();
   await openLedger(pc, token);
+  // PC 내역 목록
+  await pc
+    .getByRole("button", { name: /베이커리/ })
+    .first()
+    .scrollIntoViewIfNeeded();
+  await pc.evaluate(() => window.scrollBy(0, 260));
+  await pause(pc, 800);
+  const listShot = path.join(DEMO_OUTPUT_DIR, "map-photos-list-desktop.png");
+  await pc.screenshot({ path: listShot });
+  console.log(listShot);
+  await pc.evaluate(() => window.scrollTo(0, 0));
   await pc.getByRole("tab", { name: "달력" }).click();
   const todayCell = pc.getByRole("button", { name: /간 곳 샘플 파스타/ });
   await todayCell.hover();
